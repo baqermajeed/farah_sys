@@ -3,28 +3,28 @@ from beanie import PydanticObjectId as OID
 
 from app.constants import Role
 from app.services.chat_service import ConnectionManager
-from app.models import ChatRoom, ChatMessage, Patient, User
+from app.models import ChatRoom, ChatMessage, Patient, User, Doctor
 
 router = APIRouter(prefix="/ws", tags=["chat"])
 manager = ConnectionManager()
 
-async def _ensure_room(*, patient_id: OID, receptionist_user_id: OID) -> ChatRoom:
-    """الحصول على أو إنشاء غرفة محادثة بين موظف الاستقبال والمريض."""
+async def _ensure_room(*, patient_id: OID, doctor_id: OID) -> ChatRoom:
+    """الحصول على أو إنشاء غرفة محادثة بين الطبيب والمريض."""
     room = await ChatRoom.find_one(
         ChatRoom.patient_id == patient_id,
-        ChatRoom.receptionist_user_id == receptionist_user_id
+        ChatRoom.doctor_id == doctor_id
     )
     if room:
         return room
-    room = ChatRoom(patient_id=patient_id, receptionist_user_id=receptionist_user_id)
+    room = ChatRoom(patient_id=patient_id, doctor_id=doctor_id)
     await room.insert()
     return room
 
 @router.websocket("/chat/{patient_id}")
 async def chat_ws(websocket: WebSocket, patient_id: str, token: str = Query("")):
-    """قناة محادثة مباشرة بين موظف الاستقبال والمريض عبر WebSocket.
+    """قناة محادثة مباشرة بين الطبيب والمريض عبر WebSocket.
     - المصادقة عبر JWT في كويري بارام 'token'.
-    - يتحقق من أن المستخدم هو موظف استقبال أو المريض نفسه.
+    - يتحقق من أن الطبيب مرتبط بالمريض أو أن المستخدم هو نفس المريض.
     """
     # Authenticate
     from jose import jwt, JWTError
@@ -63,29 +63,37 @@ async def chat_ws(websocket: WebSocket, patient_id: str, token: str = Query(""))
         await websocket.close(code=4404)
         return
 
-    # Authorization: موظف استقبال أو المريض نفسه
+    # Authorization: طبيب معين أو المريض نفسه
     room = None
-    if role_str == Role.RECEPTIONIST.value:
-        # موظف الاستقبال يمكنه المحادثة مع أي مريض
-        room = await _ensure_room(patient_id=patient.id, receptionist_user_id=user.id)
+    if role_str == Role.DOCTOR.value:
+        # الطبيب يمكنه المحادثة مع المرضى المعينين له فقط
+        doctor = await Doctor.find_one(Doctor.user_id == user.id)
+        if not doctor:
+            await websocket.close(code=4403, reason="Doctor profile not found")
+            return
+        
+        # التحقق من أن الطبيب معين للمريض (أساسي أو ثانوي)
+        if doctor.id not in [patient.primary_doctor_id, patient.secondary_doctor_id]:
+            await websocket.close(code=4403, reason="Doctor not assigned to this patient")
+            return
+        
+        room = await _ensure_room(patient_id=patient.id, doctor_id=doctor.id)
         room_key = f"room:{room.id}"
     
     elif role_str == Role.PATIENT.value:
-        # المريض يمكنه المحادثة فقط مع موظف الاستقبال
+        # المريض يمكنه المحادثة مع طبيبه المعين فقط
         # التحقق من أن المستخدم هو نفس المريض
         if patient.user_id != user.id:
             await websocket.close(code=4403)
             return
         
-        # البحث عن أي غرفة محادثة موجودة لهذا المريض
-        room = await ChatRoom.find_one(ChatRoom.patient_id == patient.id)
-        if not room:
-            # إذا لم توجد غرفة، نبحث عن أي موظف استقبال وننشئ غرفة معه
-            receptionist = await User.find_one(User.role == Role.RECEPTIONIST)
-            if not receptionist:
-                await websocket.close(code=4403, reason="No receptionist available")
-                return
-            room = await _ensure_room(patient_id=patient.id, receptionist_user_id=receptionist.id)
+        # استخدام الطبيب الأساسي أو الثانوي
+        doctor_id = patient.primary_doctor_id or patient.secondary_doctor_id
+        if not doctor_id:
+            await websocket.close(code=4403, reason="No doctor assigned to this patient")
+            return
+        
+        room = await _ensure_room(patient_id=patient.id, doctor_id=doctor_id)
         room_key = f"room:{room.id}"
     
     else:

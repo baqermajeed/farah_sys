@@ -4,13 +4,13 @@ from beanie import PydanticObjectId as OID
 
 from app.security import get_current_user
 from app.schemas import ChatMessageOut
-from app.models import ChatRoom, ChatMessage, Patient, User
+from app.models import ChatRoom, ChatMessage, Patient, User, Doctor
 from app.constants import Role
 
 router = APIRouter(prefix="/chat", tags=["chat"]) 
 
 async def _get_or_room_for_user(*, patient_id: str, user: User) -> ChatRoom:
-    """الحصول على أو إنشاء غرفة محادثة بين موظف الاستقبال والمريض."""
+    """الحصول على أو إنشاء غرفة محادثة بين الطبيب والمريض."""
     # التحقق من وجود المريض
     try:
         patient = await Patient.get(OID(patient_id))
@@ -21,36 +21,49 @@ async def _get_or_room_for_user(*, patient_id: str, user: User) -> ChatRoom:
         raise HTTPException(status_code=404, detail="Patient not found")
     
     # التحقق من الصلاحيات وإنشاء/الحصول على الغرفة
-    if user.role == Role.RECEPTIONIST:
-        # موظف الاستقبال يمكنه المحادثة مع أي مريض
+    if user.role == Role.DOCTOR:
+        # الطبيب يمكنه المحادثة مع المرضى المعينين له فقط
+        doctor = await Doctor.find_one(Doctor.user_id == user.id)
+        if not doctor:
+            raise HTTPException(status_code=403, detail="Doctor profile not found")
+        
+        # التحقق من أن الطبيب معين للمريض (أساسي أو ثانوي)
+        if doctor.id not in [patient.primary_doctor_id, patient.secondary_doctor_id]:
+            raise HTTPException(status_code=403, detail="Doctor not assigned to this patient")
+        
+        # البحث عن غرفة محادثة أو إنشاء واحدة جديدة
         room = await ChatRoom.find_one(
             ChatRoom.patient_id == patient.id,
-            ChatRoom.receptionist_user_id == user.id
+            ChatRoom.doctor_id == doctor.id
         )
         if not room:
             room = ChatRoom(
                 patient_id=patient.id,
-                receptionist_user_id=user.id
+                doctor_id=doctor.id
             )
             await room.insert()
         return room
     
     elif user.role == Role.PATIENT:
-        # المريض يمكنه المحادثة مع موظف الاستقبال فقط
+        # المريض يمكنه المحادثة مع طبيبه المعين فقط
         # التحقق من أن المستخدم هو نفس المريض
         if patient.user_id != user.id:
             raise HTTPException(status_code=403, detail="Forbidden")
         
-        # البحث عن أي غرفة محادثة لهذا المريض (مع أي موظف استقبال)
-        room = await ChatRoom.find_one(ChatRoom.patient_id == patient.id)
+        # استخدام الطبيب الأساسي أو الثانوي
+        doctor_id = patient.primary_doctor_id or patient.secondary_doctor_id
+        if not doctor_id:
+            raise HTTPException(status_code=403, detail="No doctor assigned to this patient")
+        
+        # البحث عن غرفة محادثة أو إنشاء واحدة جديدة
+        room = await ChatRoom.find_one(
+            ChatRoom.patient_id == patient.id,
+            ChatRoom.doctor_id == doctor_id
+        )
         if not room:
-            # إذا لم توجد غرفة، نبحث عن أي موظف استقبال وننشئ غرفة معه
-            receptionist = await User.find_one(User.role == Role.RECEPTIONIST)
-            if not receptionist:
-                raise HTTPException(status_code=503, detail="No receptionist available. Please try again later.")
             room = ChatRoom(
                 patient_id=patient.id,
-                receptionist_user_id=receptionist.id
+                doctor_id=doctor_id
             )
             await room.insert()
         return room

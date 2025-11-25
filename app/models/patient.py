@@ -7,9 +7,9 @@ class Patient(Document):
     - روابط للطبيب الأساسي/الثانوي عبر المعرفات.
     - لكل مريض رمز QR ثابت وصورته.
     """
-    user_id: OID
-    primary_doctor_id: OID | None = None
-    secondary_doctor_id: OID | None = None
+    user_id: Indexed(OID)
+    primary_doctor_id: Indexed(OID) | None = None
+    secondary_doctor_id: Indexed(OID) | None = None
     treatment_type: str | None = None
 
     qr_code_data: Indexed(str, unique=True) = ""

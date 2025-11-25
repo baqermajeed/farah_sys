@@ -5,12 +5,12 @@ from datetime import datetime, timezone
 
 class Appointment(Document):
     """موعد مريض لدى طبيب."""
-    patient_id: OID
-    doctor_id: OID
-    scheduled_at: datetime
+    patient_id: Indexed(OID)
+    doctor_id: Indexed(OID)
+    scheduled_at: Indexed(datetime)
     note: str | None = None
     image_path: str | None = None
-    status: str = "scheduled"  # scheduled|completed|canceled|late
+    status: Indexed(str) = "scheduled"  # scheduled|completed|canceled|late
     remind_3d_sent: bool = False
     remind_1d_sent: bool = False
     remind_day_sent: bool = False

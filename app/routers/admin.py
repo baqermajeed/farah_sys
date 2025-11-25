@@ -52,28 +52,26 @@ async def create_patient_admin(payload: PatientCreate, db: AsyncSession = Depend
         qr_image_path=p.qr_image_path,
     )
 
+# تم نقل الإحصائيات إلى /stats router
+# هذه endpoints للتوافق مع الإصدارات القديمة
 @router.get("/stats")
-async def stats(db: AsyncSession = Depends(get_db)):
-    """إحصائيات بسيطة: عدد المرضى وإجمالي المرضى لكل طبيب (أساسي فقط)."""
-    total_patients = (await db.execute(select(func.count()).select_from(Patient))).scalar_one()
-    per_doctor = []
-    doctors = (await db.execute(select(Doctor))).scalars().all()
-    for d in doctors:
-        count = (await db.execute(select(func.count()).select_from(Patient).where(Patient.primary_doctor_id == d.id))).scalar_one()
-        per_doctor.append({"doctor_id": d.id, "user_id": d.user_id, "patients_primary": count})
-    return {"total_patients": total_patients, "per_doctor": per_doctor}
-
-@router.get("/stats/overview")
-async def stats_overview(group: str = "day", date_from: str | None = None, date_to: str | None = None, db: AsyncSession = Depends(get_db)):
-    """إحصائيات عامة مجمعة (يومي/شهري/سنوي): مرضى جدد، مواعيد، سجلات، صور."""
-    from app.services.stats_service import overview
-    return await overview(db, group=group, date_from=date_from, date_to=date_to)
-
-@router.get("/stats/transfers")
-async def stats_transfers(group: str = "day", date_from: str | None = None, date_to: str | None = None, db: AsyncSession = Depends(get_db)):
-    """عدد تحويلات المرضى لكل طبيب مجمّعة حسب الفترة (يومي/شهري/سنوي)."""
-    from app.services.stats_service import transfers
-    return await transfers(db, group=group, date_from=date_from, date_to=date_to)
+async def stats():
+    """إحصائيات بسيطة: عدد المرضى وإجمالي المرضى لكل طبيب (أساسي فقط).
+    ملاحظة: تم نقل الإحصائيات الشاملة إلى /stats/dashboard
+    """
+    from app.services.stats_service import get_doctors_stats
+    stats = await get_doctors_stats()
+    return {
+        "total_patients": sum(d["total_patients"] for d in stats["doctors"]),
+        "per_doctor": [
+            {
+                "doctor_id": d["doctor_id"],
+                "user_id": d["user_id"],
+                "patients_primary": d["primary_patients"]
+            }
+            for d in stats["doctors"]
+        ]
+    }
 
 @router.patch("/patients/{patient_id}", response_model=PatientOut)
 async def update_patient_admin(patient_id: int, payload: PatientUpdate, db: AsyncSession = Depends(get_db)):

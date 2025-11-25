@@ -1,36 +1,43 @@
-from fastapi import APIRouter, Depends, UploadFile, File
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, UploadFile, File, Query
+from beanie.operators import In
 
 from app.schemas import GalleryOut, GalleryCreate, PatientOut
-from app.database import get_db
 from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.services.patient_service import create_gallery_image
 from app.utils.storage import save_upload
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-from app.models import Patient
+from app.models import Patient, User
+
+IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
+MAX_IMAGE_MB = 10
 
 router = APIRouter(prefix="/photographer", tags=["photographer"], dependencies=[Depends(require_roles([Role.PHOTOGRAPHER]))])
 
 @router.get("/patients", response_model=list[PatientOut])
-async def list_patients(db: AsyncSession = Depends(get_db)):
+async def list_patients(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+):
     """قائمة جميع المرضى للمصور بهدف اختيار مريض لإرفاق الصور."""
-    res = await db.execute(select(Patient).options(selectinload(Patient.user)))
-    out = []
-    for p in res.scalars().all():
-        u = p.user
+    patients = await Patient.find({}).skip(skip).limit(limit).to_list()
+    user_ids = list({p.user_id for p in patients if p.user_id})
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+
+    out: list[PatientOut] = []
+    for p in patients:
+        u = user_map.get(p.user_id)
         out.append(PatientOut(
-            id=p.id,
-            user_id=p.user_id,
-            name=u.name,
-            phone=u.phone,
-            gender=u.gender,
-            age=u.age,
-            city=u.city,
+            id=str(p.id),
+            user_id=str(p.user_id),
+            name=u.name if u else None,
+            phone=u.phone if u else "",
+            gender=u.gender if u else None,
+            age=u.age if u else None,
+            city=u.city if u else None,
             treatment_type=p.treatment_type,
-            primary_doctor_id=p.primary_doctor_id,
-            secondary_doctor_id=p.secondary_doctor_id,
+            primary_doctor_id=str(p.primary_doctor_id) if p.primary_doctor_id else None,
+            secondary_doctor_id=str(p.secondary_doctor_id) if p.secondary_doctor_id else None,
             qr_code_data=p.qr_code_data,
             qr_image_path=p.qr_image_path,
         ))
@@ -39,6 +46,11 @@ async def list_patients(db: AsyncSession = Depends(get_db)):
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)
 async def upload_patient_image(patient_id: str, payload: GalleryCreate, image: UploadFile = File(...), current=Depends(get_current_user)):
     """المصور يرفع صورة للمريض مع ملاحظة اختيارية."""
-    image_path = await save_upload(image, subdir="gallery")
+    image_path = await save_upload(
+        image,
+        subdir="gallery",
+        allowed_content_types=IMAGE_TYPES,
+        max_size_mb=MAX_IMAGE_MB,
+    )
     gi = await create_gallery_image(patient_id=patient_id, uploaded_by_user_id=str(current.id), image_path=image_path, note=payload.note)
     return GalleryOut.model_validate(gi)

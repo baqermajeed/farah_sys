@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 class DeviceToken(Document):
     """رمز جهاز FCM لكل مستخدم وجهاز."""
-    user_id: OID
+    user_id: Indexed(OID)
     token: Indexed(str, unique=True)
     platform: str | None = None  # ios|android|web
     active: bool = True
@@ -15,10 +15,10 @@ class DeviceToken(Document):
 
 class Notification(Document):
     """إشعار مُرسَل (اختياري للاحتفاظ)."""
-    user_id: OID
+    user_id: Indexed(OID)
     title: str
     body: str
-    sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    sent_at: Indexed(datetime) = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:
         name = "notifications"

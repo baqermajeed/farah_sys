@@ -2,10 +2,35 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Tuple
 from fastapi import HTTPException
 from beanie import PydanticObjectId as OID
+from beanie.operators import In
 
 from app.models import Patient, User, Doctor, Appointment, TreatmentNote, GalleryImage
 from app.constants import Role
 from app.schemas import PatientUpdate
+
+MAX_PAGE_SIZE = 100
+
+
+def _normalize_pagination(skip: int = 0, limit: Optional[int] = None) -> Tuple[int, Optional[int]]:
+    """Ensure pagination params stay within safe bounds."""
+    safe_skip = max(0, skip)
+    if limit is None:
+        return safe_skip, None
+    safe_limit = max(1, min(limit, MAX_PAGE_SIZE))
+    return safe_skip, safe_limit
+
+
+async def _attach_users(patients: List[Patient]) -> None:
+    """Attach User documents to patient objects for legacy attributes."""
+    if not patients:
+        return
+    user_ids = list({p.user_id for p in patients if p.user_id})
+    if not user_ids:
+        return
+    users = await User.find(In(User.id, user_ids)).to_list()
+    user_map = {u.id: u for u in users}
+    for patient in patients:
+        setattr(patient, "user", user_map.get(patient.user_id))
 
 async def get_patient_by_id(patient_id: str) -> Tuple[Patient, User]:
     """Fetch patient and its user info or 404."""
@@ -15,10 +40,16 @@ async def get_patient_by_id(patient_id: str) -> Tuple[Patient, User]:
     user = await User.get(patient.user_id)
     return patient, user
 
-async def list_doctor_patients(doctor_id: str) -> List[Patient]:
+async def list_doctor_patients(doctor_id: str, skip: int = 0, limit: Optional[int] = None) -> List[Patient]:
     """All patients assigned to this doctor (primary or secondary)."""
+    skip, limit = _normalize_pagination(skip, limit)
     did = OID(doctor_id)
-    patients = await Patient.find((Patient.primary_doctor_id == did) | (Patient.secondary_doctor_id == did)).to_list()
+    query = Patient.find((Patient.primary_doctor_id == did) | (Patient.secondary_doctor_id == did))
+    query = query.skip(skip)
+    if limit is not None:
+        query = query.limit(limit)
+    patients = await query.to_list()
+    await _attach_users(patients)
     return patients
 
 async def update_patient_by_doctor(*, doctor_id: str, patient_id: str, data: PatientUpdate) -> Patient:
@@ -209,8 +240,11 @@ async def list_appointments_for_doctor(
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
     status: Optional[str] = None,
+    skip: int = 0,
+    limit: Optional[int] = None,
 ) -> List[Appointment]:
     start, end = await _date_bounds(day, date_from, date_to)
+    skip, limit = _normalize_pagination(skip, limit)
     did = OID(doctor_id)
     query = Appointment.find(Appointment.doctor_id == did)
     if start:
@@ -222,7 +256,10 @@ async def list_appointments_for_doctor(
         query = query.find((Appointment.scheduled_at < now) & (Appointment.status == "scheduled"))
     elif status:
         query = query.find(Appointment.status == status)
-    return await query.sort("scheduled_at").to_list()
+    query = query.sort("scheduled_at").skip(skip)
+    if limit is not None:
+        query = query.limit(limit)
+    return await query.to_list()
 
 async def list_appointments_for_all(
     *,
@@ -230,8 +267,11 @@ async def list_appointments_for_all(
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
     status: Optional[str] = None,
+    skip: int = 0,
+    limit: Optional[int] = None,
 ) -> List[Appointment]:
     start, end = await _date_bounds(day, date_from, date_to)
+    skip, limit = _normalize_pagination(skip, limit)
     query = Appointment.find({})
     if start:
         query = query.find(Appointment.scheduled_at >= start)
@@ -242,7 +282,10 @@ async def list_appointments_for_all(
         query = query.find((Appointment.scheduled_at < now) & (Appointment.status == "scheduled"))
     elif status:
         query = query.find(Appointment.status == status)
-    return await query.sort("scheduled_at").to_list()
+    query = query.sort("scheduled_at").skip(skip)
+    if limit is not None:
+        query = query.limit(limit)
+    return await query.to_list()
 
 async def list_patient_appointments_grouped(*, patient_id: str) -> tuple[List[Appointment], List[Appointment]]:
     p = await Patient.get(OID(patient_id))
@@ -257,8 +300,16 @@ async def list_patient_appointments_grouped(*, patient_id: str) -> tuple[List[Ap
             secondary.append(a)
     return primary, secondary
 
-async def list_notes_for_patient(*, patient_id: str) -> List[TreatmentNote]:
-    return await TreatmentNote.find(TreatmentNote.patient_id == OID(patient_id)).sort("-created_at").to_list()
+async def list_notes_for_patient(*, patient_id: str, skip: int = 0, limit: Optional[int] = None) -> List[TreatmentNote]:
+    skip, limit = _normalize_pagination(skip, limit)
+    query = TreatmentNote.find(TreatmentNote.patient_id == OID(patient_id)).sort("-created_at").skip(skip)
+    if limit is not None:
+        query = query.limit(limit)
+    return await query.to_list()
 
-async def list_gallery_for_patient(*, patient_id: str) -> List[GalleryImage]:
-    return await GalleryImage.find(GalleryImage.patient_id == OID(patient_id)).sort("-created_at").to_list()
+async def list_gallery_for_patient(*, patient_id: str, skip: int = 0, limit: Optional[int] = None) -> List[GalleryImage]:
+    skip, limit = _normalize_pagination(skip, limit)
+    query = GalleryImage.find(GalleryImage.patient_id == OID(patient_id)).sort("-created_at").skip(skip)
+    if limit is not None:
+        query = query.limit(limit)
+    return await query.to_list()

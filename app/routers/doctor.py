@@ -10,12 +10,21 @@ from app.constants import Role
 from app.services import patient_service
 from app.utils.storage import save_upload
 
+IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
+MAX_IMAGE_MB = 10
+
 router = APIRouter(prefix="/doctor", tags=["doctor"], dependencies=[Depends(require_roles([Role.DOCTOR]))])
 
 @router.get("/patients", response_model=List[PatientOut])
-async def my_patients(current=Depends(get_current_user)):
+async def my_patients(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current=Depends(get_current_user),
+):
     """يعرض المرضى الخاصين بالطبيب (أساسي/ثانوي)."""
-    patients = await patient_service.list_doctor_patients(str(current.doctor_profile.id))
+    patients = await patient_service.list_doctor_patients(
+        str(current.doctor_profile.id), skip=skip, limit=limit
+    )
     # Map to PatientOut combining user fields
     out: List[PatientOut] = []
     for p in patients:
@@ -45,7 +54,12 @@ async def add_note(patient_id: str, payload: NoteCreate, image: UploadFile | Non
     """إضافة سجل (ملاحظة) مع صورة اختيارية."""
     image_path = None
     if image:
-        image_path = await save_upload(image, subdir="notes")
+        image_path = await save_upload(
+            image,
+            subdir="notes",
+            allowed_content_types=IMAGE_TYPES,
+            max_size_mb=MAX_IMAGE_MB,
+        )
     note = await patient_service.create_note(patient_id=patient_id, doctor_id=str(current.doctor_profile.id), note=payload.note, image_path=image_path)
     return NoteOut.model_validate(note)
 
@@ -54,7 +68,12 @@ async def add_appointment(patient_id: str, payload: AppointmentCreate, image: Up
     """إضافة موعد جديد مع ملاحظة واختيار صورة (قسم المواعيد)."""
     image_path = None
     if image:
-        image_path = await save_upload(image, subdir="appointments")
+        image_path = await save_upload(
+            image,
+            subdir="appointments",
+            allowed_content_types=IMAGE_TYPES,
+            max_size_mb=MAX_IMAGE_MB,
+        )
     ap = await patient_service.create_appointment(
         patient_id=patient_id,
         doctor_id=str(current.doctor_profile.id),
@@ -72,16 +91,37 @@ async def add_appointment(patient_id: str, payload: AppointmentCreate, image: Up
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)
 async def add_gallery_image(patient_id: str, payload: GalleryCreate, image: UploadFile = File(...), current=Depends(get_current_user)):
     """رفع صورة إلى معرض المريض (قسم المعرض)."""
-    image_path = await save_upload(image, subdir="gallery")
+    image_path = await save_upload(
+        image,
+        subdir="gallery",
+        allowed_content_types=IMAGE_TYPES,
+        max_size_mb=MAX_IMAGE_MB,
+    )
     gi = await patient_service.create_gallery_image(patient_id=patient_id, uploaded_by_user_id=str(current.id), image_path=image_path, note=payload.note)
     return GalleryOut.model_validate(gi)
 
 @router.get("/appointments", response_model=List[AppointmentOut])
-async def list_my_appointments(day: str | None = None, date_from: str | None = None, date_to: str | None = None, status: str | None = None, current=Depends(get_current_user)):
+async def list_my_appointments(
+    day: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    status: str | None = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current=Depends(get_current_user),
+):
     """مواعيدي: اليوم/غدًا/الشهر أو نطاق (مع المتأخرون)."""
     df = datetime.fromisoformat(date_from) if date_from else None
     dt = datetime.fromisoformat(date_to) if date_to else None
-    apps = await patient_service.list_appointments_for_doctor(doctor_id=str(current.doctor_profile.id), day=day, date_from=df, date_to=dt, status=status)
+    apps = await patient_service.list_appointments_for_doctor(
+        doctor_id=str(current.doctor_profile.id),
+        day=day,
+        date_from=df,
+        date_to=dt,
+        status=status,
+        skip=skip,
+        limit=limit,
+    )
     return [AppointmentOut.model_validate(a) for a in apps]
 
 @router.patch("/patients/{patient_id}", response_model=PatientOut)
@@ -111,14 +151,28 @@ async def delete_patient(patient_id: int, db: AsyncSession = Depends(get_db), cu
     return None
 
 @router.get("/patients/{patient_id}/notes", response_model=List[NoteOut])
-async def list_notes(patient_id: str, current=Depends(get_current_user)):
+async def list_notes(
+    patient_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current=Depends(get_current_user),
+):
     """قائمة السجلات للمريض (القسم الأول)."""
     # Authorization ensured in create_note; here we just list
-    notes = await patient_service.list_notes_for_patient(patient_id=patient_id)
+    notes = await patient_service.list_notes_for_patient(
+        patient_id=patient_id, skip=skip, limit=limit
+    )
     return [NoteOut.model_validate(n) for n in notes]
 
 @router.get("/patients/{patient_id}/gallery", response_model=List[GalleryOut])
-async def list_gallery(patient_id: str, current=Depends(get_current_user)):
+async def list_gallery(
+    patient_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current=Depends(get_current_user),
+):
     """قائمة صور المعرض للمريض (القسم الثالث)."""
-    gallery = await patient_service.list_gallery_for_patient(patient_id=patient_id)
+    gallery = await patient_service.list_gallery_for_patient(
+        patient_id=patient_id, skip=skip, limit=limit
+    )
     return [GalleryOut.model_validate(g) for g in gallery]
