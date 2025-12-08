@@ -17,10 +17,47 @@ async def create_staff_user(*, phone: str, name: Optional[str], role: Role) -> U
     if role == Role.DOCTOR:
         await Doctor(user_id=user.id).insert()
     if role == Role.PATIENT:
-        p = Patient(user_id=user.id, qr_code_data="")
+        from os import urandom
+
+        tmp_qr = f"tmp-{urandom(8).hex()}"
+        p = Patient(user_id=user.id, qr_code_data=tmp_qr)
         await p.insert()
         await ensure_patient_qr(p)
     return user
+
+
+async def create_patient(
+    *,
+    phone: str,
+    name: Optional[str],
+    gender: Optional[str],
+    age: Optional[int],
+    city: Optional[str],
+) -> Patient:
+    """Create a full patient (User + Patient profile) for reception/admin flows."""
+    # تأكد أن رقم الهاتف غير مستخدم
+    if await User.find_one(User.phone == phone):
+        raise HTTPException(status_code=400, detail="Phone already exists")
+
+    # أنشئ مستخدمًا بدور مريض
+    user = User(
+        phone=phone,
+        name=name,
+        role=Role.PATIENT,
+        gender=gender,
+        age=age,
+        city=city,
+    )
+    await user.insert()
+
+    # أنشئ ملف المريض + QR
+    from os import urandom
+
+    tmp_qr = f"tmp-{urandom(8).hex()}"
+    patient = Patient(user_id=user.id, qr_code_data=tmp_qr)
+    await patient.insert()
+    await ensure_patient_qr(patient)
+    return patient
 
 async def assign_patient_to_doctors(
     *,
@@ -32,29 +69,6 @@ async def assign_patient_to_doctors(
     """Admin or Receptionist: wrapper to assign doctors using patient service semantics."""
     from app.services.patient_service import assign_patient_doctors
     return await assign_patient_doctors(
-        patient_id=patient_id,
-        primary_doctor_id=primary_doctor_id,
-        secondary_doctor_id=secondary_doctor_id,
-        assigned_by_user_id=assigned_by_user_id,
-    )
-    await db.flush()
-    await ensure_patient_qr(db, patient)
-    await db.commit()
-    await db.refresh(patient)
-    return patient
-
-async def assign_patient_to_doctors(
-    db: AsyncSession,
-    *,
-    patient_id: Optional[int],
-    primary_doctor_id: Optional[int],
-    secondary_doctor_id: Optional[int],
-    assigned_by_user_id: Optional[int] = None,
-) -> Patient:
-    """Admin or Receptionist: wrapper to assign doctors using patient service semantics."""
-    from app.services.patient_service import assign_patient_doctors
-    return await assign_patient_doctors(
-        db,
         patient_id=patient_id,
         primary_doctor_id=primary_doctor_id,
         secondary_doctor_id=secondary_doctor_id,

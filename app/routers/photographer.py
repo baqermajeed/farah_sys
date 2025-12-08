@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Query, HTTPException, Form
 from beanie.operators import In
 
 from app.schemas import GalleryOut, GalleryCreate, PatientOut
 from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.services.patient_service import create_gallery_image
-from app.utils.storage import save_upload
+from app.utils.r2_clinic import upload_clinic_image
 from app.models import Patient, User
 
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
@@ -44,13 +44,29 @@ async def list_patients(
     return out
 
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)
-async def upload_patient_image(patient_id: str, payload: GalleryCreate, image: UploadFile = File(...), current=Depends(get_current_user)):
+async def upload_patient_image(
+    patient_id: str,
+    note: str | None = Form(None),
+    image: UploadFile = File(...),
+    current=Depends(get_current_user),
+):
     """المصور يرفع صورة للمريض مع ملاحظة اختيارية."""
-    image_path = await save_upload(
-        image,
-        subdir="gallery",
-        allowed_content_types=IMAGE_TYPES,
-        max_size_mb=MAX_IMAGE_MB,
+    if IMAGE_TYPES and image.content_type not in IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed types: {', '.join(IMAGE_TYPES)}",
+        )
+    file_bytes = await image.read()
+    image_path = await upload_clinic_image(
+        patient_id=patient_id,
+        folder="gallery",
+        file_bytes=file_bytes,
+        content_type=image.content_type,
     )
-    gi = await create_gallery_image(patient_id=patient_id, uploaded_by_user_id=str(current.id), image_path=image_path, note=payload.note)
+    gi = await create_gallery_image(
+        patient_id=patient_id,
+        uploaded_by_user_id=str(current.id),
+        image_path=image_path,
+        note=note,
+    )
     return GalleryOut.model_validate(gi)

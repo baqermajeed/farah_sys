@@ -1,14 +1,23 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Query, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
-from app.schemas import PatientOut, GalleryOut, GalleryCreate, NoteCreate, NoteOut, AppointmentCreate, AppointmentOut, PatientUpdate
+from app.schemas import (
+    PatientOut,
+    GalleryOut,
+    GalleryCreate,
+    NoteCreate,
+    NoteOut,
+    AppointmentCreate,
+    AppointmentOut,
+    PatientUpdate,
+)
 from app.database import get_db
 from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.services import patient_service
-from app.utils.storage import save_upload
+from app.utils.r2_clinic import upload_clinic_image
 
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
 MAX_IMAGE_MB = 10
@@ -54,11 +63,19 @@ async def add_note(patient_id: str, payload: NoteCreate, image: UploadFile | Non
     """إضافة سجل (ملاحظة) مع صورة اختيارية."""
     image_path = None
     if image:
-        image_path = await save_upload(
-            image,
-            subdir="notes",
-            allowed_content_types=IMAGE_TYPES,
-            max_size_mb=MAX_IMAGE_MB,
+        if IMAGE_TYPES and image.content_type not in IMAGE_TYPES:
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type. Allowed types: {', '.join(IMAGE_TYPES)}",
+            )
+        file_bytes = await image.read()
+        image_path = await upload_clinic_image(
+            patient_id=patient_id,
+            folder="notes",
+            file_bytes=file_bytes,
+            content_type=image.content_type,
         )
     note = await patient_service.create_note(patient_id=patient_id, doctor_id=str(current.doctor_profile.id), note=payload.note, image_path=image_path)
     return NoteOut.model_validate(note)
@@ -68,20 +85,28 @@ async def add_appointment(patient_id: str, payload: AppointmentCreate, image: Up
     """إضافة موعد جديد مع ملاحظة واختيار صورة (قسم المواعيد)."""
     image_path = None
     if image:
-        image_path = await save_upload(
-            image,
-            subdir="appointments",
-            allowed_content_types=IMAGE_TYPES,
-            max_size_mb=MAX_IMAGE_MB,
+        if IMAGE_TYPES and image.content_type not in IMAGE_TYPES:
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type. Allowed types: {', '.join(IMAGE_TYPES)}",
+            )
+        file_bytes = await image.read()
+        image_path = await upload_clinic_image(
+            patient_id=patient_id,
+            folder="appointments",
+            file_bytes=file_bytes,
+            content_type=image.content_type,
         )
+    # نضمن وجود timezone؛ إن لم يوجد نفترض UTC
+    _sa = datetime.fromisoformat(payload.scheduled_at)
+    if _sa.tzinfo is None:
+        _sa = _sa.replace(tzinfo=timezone.utc)
+
     ap = await patient_service.create_appointment(
         patient_id=patient_id,
         doctor_id=str(current.doctor_profile.id),
-        # نضمن وجود timezone؛ إن لم يوجد نفترض UTC
-        _sa = datetime.fromisoformat(payload.scheduled_at)
-        if _sa.tzinfo is None:
-            from datetime import timezone
-            _sa = _sa.replace(tzinfo=timezone.utc)
         scheduled_at=_sa,
         note=payload.note,
         image_path=image_path,
@@ -89,15 +114,33 @@ async def add_appointment(patient_id: str, payload: AppointmentCreate, image: Up
     return AppointmentOut.model_validate(ap)
 
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)
-async def add_gallery_image(patient_id: str, payload: GalleryCreate, image: UploadFile = File(...), current=Depends(get_current_user)):
+async def add_gallery_image(
+    patient_id: str,
+    note: str | None = Form(None),
+    image: UploadFile = File(...),
+    current=Depends(get_current_user),
+):
     """رفع صورة إلى معرض المريض (قسم المعرض)."""
-    image_path = await save_upload(
-        image,
-        subdir="gallery",
-        allowed_content_types=IMAGE_TYPES,
-        max_size_mb=MAX_IMAGE_MB,
+    if IMAGE_TYPES and image.content_type not in IMAGE_TYPES:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed types: {', '.join(IMAGE_TYPES)}",
+        )
+    file_bytes = await image.read()
+    image_path = await upload_clinic_image(
+        patient_id=patient_id,
+        folder="gallery",
+        file_bytes=file_bytes,
+        content_type=image.content_type,
     )
-    gi = await patient_service.create_gallery_image(patient_id=patient_id, uploaded_by_user_id=str(current.id), image_path=image_path, note=payload.note)
+    gi = await patient_service.create_gallery_image(
+        patient_id=patient_id,
+        uploaded_by_user_id=str(current.id),
+        image_path=image_path,
+        note=note,
+    )
     return GalleryOut.model_validate(gi)
 
 @router.get("/appointments", response_model=List[AppointmentOut])

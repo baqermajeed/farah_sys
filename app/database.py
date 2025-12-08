@@ -1,12 +1,8 @@
 from app.config import get_settings
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
-import os
 
 settings = get_settings()
-
-# Ensure media directory exists early
-os.makedirs(settings.MEDIA_DIR, exist_ok=True)
 
 _mongo_client: AsyncIOMotorClient | None = None
 

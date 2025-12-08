@@ -34,22 +34,28 @@ async def my_profile(current=Depends(get_current_user)):
     )
 
 @router.get("/appointments", response_model=PatientAppointmentsOut)
-async def my_appointments(db: AsyncSession = Depends(get_db), current=Depends(get_current_user)):
+async def my_appointments(current=Depends(get_current_user)):
     """مواعيدي مقسّمة حسب الطبيب الأساسي والثانوي."""
-    primary, secondary = await patient_service.list_patient_appointments_grouped(db, patient_id=current.patient_profile.id)
+    primary, secondary = await patient_service.list_patient_appointments_grouped(
+        patient_id=str(current.patient_profile.id)
+    )
     return PatientAppointmentsOut(
         primary=[AppointmentOut.model_validate(a) for a in primary],
         secondary=[AppointmentOut.model_validate(a) for a in secondary],
     )
 
 @router.get("/notes", response_model=list[NoteOut])
-async def my_notes(db: AsyncSession = Depends(get_db), current=Depends(get_current_user)):
+async def my_notes(current=Depends(get_current_user)):
     """سجلات علاجي (القسم الأول)."""
-    notes = await patient_service.list_notes_for_patient(db, patient_id=current.patient_profile.id)
+    notes = await patient_service.list_notes_for_patient(
+        patient_id=str(current.patient_profile.id)
+    )
     return [NoteOut.model_validate(n) for n in notes]
 
 @router.get("/gallery", response_model=list[GalleryOut])
-async def my_gallery(db: AsyncSession = Depends(get_db), current=Depends(get_current_user)):
+async def my_gallery(current=Depends(get_current_user)):
     """معرض صوري (القسم الثالث)."""
-    gallery = await patient_service.list_gallery_for_patient(db, patient_id=current.patient_profile.id)
+    gallery = await patient_service.list_gallery_for_patient(
+        patient_id=str(current.patient_profile.id)
+    )
     return [GalleryOut.model_validate(g) for g in gallery]

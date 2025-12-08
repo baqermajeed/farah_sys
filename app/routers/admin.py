@@ -6,20 +6,36 @@ from app.schemas import UserOut, PatientOut, PatientCreate, PatientUpdate
 from app.database import get_db
 from app.security import require_roles, get_current_user
 from app.constants import Role
-from app.services.admin_service import create_staff_user, assign_patient_to_doctors, create_patient
+from app.services.admin_service import (
+    create_staff_user,
+    assign_patient_to_doctors,
+    create_patient,
+)
 from app.services.patient_service import update_patient_by_admin, delete_patient
 from app.models import Patient, Doctor
 from sqlalchemy import func, select
 from app.services import patient_service
 from app.schemas import AppointmentOut, NoteOut, GalleryOut
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_roles([Role.ADMIN]))])
+router = APIRouter(
+    prefix="/admin", tags=["admin"], dependencies=[Depends(require_roles([Role.ADMIN]))]
+)
+
 
 @router.post("/staff", response_model=UserOut)
-async def create_staff(phone: str, role: Role, name: str | None = None, db: AsyncSession = Depends(get_db)):
+async def create_staff(phone: str, role: Role, name: str | None = None):
     """المدير ينشئ حساب موظف (طبيب/موظف استقبال/مصور/مدير)."""
-    user = await create_staff_user(db, phone=phone, name=name, role=role)
-    return UserOut.model_validate(user)
+    user = await create_staff_user(phone=phone, name=name, role=role)
+    # نحوّل الـ ObjectId إلى str يدويًا ليتوافق مع UserOut
+    return UserOut(
+        id=str(user.id),
+        name=user.name,
+        phone=user.phone,
+        gender=user.gender,
+        age=user.age,
+        city=user.city,
+        role=user.role,
+    )
 
 @router.post("/assign", summary="تعيين مريض لأطباء")
 async def admin_assign(patient_id: int, primary_doctor_id: int | None = None, secondary_doctor_id: int | None = None, db: AsyncSession = Depends(get_db), current=Depends(get_current_user)):
@@ -28,26 +44,31 @@ async def admin_assign(patient_id: int, primary_doctor_id: int | None = None, se
     return {"ok": True, "patient_id": p.id, "primary_doctor_id": p.primary_doctor_id, "secondary_doctor_id": p.secondary_doctor_id}
 
 @router.post("/patients", response_model=PatientOut)
-async def create_patient_admin(payload: PatientCreate, db: AsyncSession = Depends(get_db)):
-    """إنشاء مريض جديد من لوحة المدير مع توليد QR تلقائيًا."""
-    p = await create_patient(db, phone=payload.phone, name=payload.name, gender=payload.gender, age=payload.age, city=payload.city)
-    # Re-fetch with user eager-loaded
-    from sqlalchemy.orm import selectinload
-    from sqlalchemy import select as sa_select
-    res = await db.execute(sa_select(Patient).options(selectinload(Patient.user)).where(Patient.id == p.id))
-    p = res.scalar_one()
-    u = p.user
+async def create_patient_admin(payload: PatientCreate):
+    """إنشاء مريض جديد من لوحة المدير مع توليد QR تلقائيًا (MongoDB/Beanie)."""
+    # استخدم خدمة create_patient المبنية على Beanie
+    p = await create_patient(
+        phone=payload.phone,
+        name=payload.name,
+        gender=payload.gender,
+        age=payload.age,
+        city=payload.city,
+    )
+    # جلب بيانات المستخدم المرتبط بالمريض
+    from app.models import User
+
+    u = await User.get(p.user_id)
     return PatientOut(
-        id=p.id,
-        user_id=p.user_id,
-        name=u.name,
-        phone=u.phone,
-        gender=u.gender,
-        age=u.age,
-        city=u.city,
+        id=str(p.id),
+        user_id=str(p.user_id),
+        name=u.name if u else None,
+        phone=u.phone if u else "",
+        gender=u.gender if u else None,
+        age=u.age if u else None,
+        city=u.city if u else None,
         treatment_type=p.treatment_type,
-        primary_doctor_id=p.primary_doctor_id,
-        secondary_doctor_id=p.secondary_doctor_id,
+        primary_doctor_id=str(p.primary_doctor_id) if p.primary_doctor_id else None,
+        secondary_doctor_id=str(p.secondary_doctor_id) if p.secondary_doctor_id else None,
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
     )

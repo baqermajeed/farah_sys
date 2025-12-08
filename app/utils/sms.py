@@ -1,26 +1,15 @@
-from typing import Optional
 from app.config import get_settings
+from app.utils.logger import get_logger
 
 settings = get_settings()
+logger = get_logger("sms")
+
 
 async def send_sms(phone: str, message: str) -> None:
-    """Send SMS via configured provider.
-    - 'dummy': prints to logs (dev only).
-    - 'twilio': send via Twilio creds in .env (implementation placeholder).
     """
-    provider = settings.SMS_PROVIDER.lower()
-    if provider == "dummy":
-        # In dev, just log the message; integrate with your logger if needed.
-        print(f"[SMS:DUMMY] to={phone} msg={message}")
-        return
-    elif provider == "twilio":
-        # To keep the base lightweight, we avoid importing Twilio SDK by default.
-        # You can install 'twilio' package and uncomment below to send real SMS.
-        # from twilio.rest import Client
-        # client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-        # client.messages.create(to=phone, from_=settings.TWILIO_FROM_NUMBER, body=message)
-        print(f"[SMS:TWILIO-STUB] Would send to {phone}: {message}")
-        return
-    else:
-        print(f"[SMS:UNKNOWN] {provider} not supported; message not sent.")
-        return
+    Dev implementation:
+    - Always log + print OTP/message so يمكنك نسخه بسهولة من الـ Swagger أو من ملف اللوج.
+    - لا يتم إرسال SMS حقيقي هنا.
+    """
+    logger.info(f"[OTP SMS] {phone} => {message}")
+    print(f"[OTP] {phone} => {message}")
