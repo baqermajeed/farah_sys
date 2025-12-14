@@ -23,9 +23,21 @@ router = APIRouter(
 
 
 @router.post("/staff", response_model=UserOut)
-async def create_staff(phone: str, role: Role, name: str | None = None):
-    """المدير ينشئ حساب موظف (طبيب/موظف استقبال/مصور/مدير)."""
-    user = await create_staff_user(phone=phone, name=name, role=role)
+async def create_staff(
+    phone: str,
+    username: str,
+    password: str,
+    role: Role,
+    name: str | None = None,
+):
+    """المدير ينشئ حساب موظف (طبيب/موظف استقبال/مصور/مدير) باستخدام username/password."""
+    user = await create_staff_user(
+        phone=phone,
+        username=username,
+        password=password,
+        name=name,
+        role=role,
+    )
     # نحوّل الـ ObjectId إلى str يدويًا ليتوافق مع UserOut
     return UserOut(
         id=str(user.id),

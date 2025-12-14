@@ -2,18 +2,19 @@ import hashlib
 import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+
 from fastapi import HTTPException
 
 from app.constants import Role
 from app.models import User, Patient, OTPRequest, Doctor
-from app.security import create_access_token
+from app.security import create_access_token, verify_password
 from app.utils.sms import send_sms
 from app.utils.qrcode_gen import ensure_patient_qr
 from app.utils.logger import get_logger
-from beanie import PydanticObjectId as OID
 
 
 # ---------------- OTP helpers ----------------
+
 
 def _hash_code(code: str) -> str:
     """Hash OTP code using SHA256; simple and fast."""
@@ -53,7 +54,7 @@ async def verify_otp_and_login(
     age: Optional[int] = None,
     city: Optional[str] = None,
 ) -> tuple[str, User]:
-    """Verify OTP; create user if not exists (always PATIENT). Returns (jwt, user)."""
+    """Verify OTP؛ يسمح فقط للمريض، وينشئ حساب مريض إن لم يوجد. يرجع (jwt, user)."""
     now = datetime.now(timezone.utc)
 
     otp = (
@@ -79,6 +80,13 @@ async def verify_otp_and_login(
     # Lookup or create user
     user = await User.find_one(User.phone == phone)
 
+    # إن وجد مستخدم وليس مريضًا فلا نسمح باستخدام OTP له
+    if user and user.role != Role.PATIENT:
+        raise HTTPException(
+            status_code=400,
+            detail="OTP login is allowed for patients only",
+        )
+
     if not user:
         user = User(
             name=name,
@@ -102,6 +110,38 @@ async def verify_otp_and_login(
             "sub": str(user.id),
             "role": user.role,
             "phone": user.phone,
+        }
+    )
+    return token, user
+
+
+# ---------------- Staff login (username/password) ----------------
+
+
+async def staff_login_with_password(*, username: str, password: str) -> tuple[str, User]:
+    """تسجيل دخول الطبيب/الاستقبال/المصور/المدير عن طريق username + password."""
+    user = await User.find_one(User.username == username)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    if user.role not in {
+        Role.ADMIN,
+        Role.DOCTOR,
+        Role.RECEPTIONIST,
+        Role.PHOTOGRAPHER,
+    }:
+        # لا يسمح للمرضى باستخدام هذا النوع من تسجيل الدخول
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    if not verify_password(password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    token = create_access_token(
+        {
+            "sub": str(user.id),
+            "role": user.role,
+            "phone": user.phone,
+            "username": user.username,
         }
     )
     return token, user

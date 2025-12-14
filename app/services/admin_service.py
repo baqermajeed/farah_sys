@@ -1,28 +1,43 @@
 from typing import Optional
+
 from fastapi import HTTPException
 
-from app.models import User, Doctor, Patient
 from app.constants import Role
+from app.models import User, Doctor, Patient
+from app.security import hash_password
 from app.utils.qrcode_gen import ensure_patient_qr
 
-async def create_staff_user(*, phone: str, name: Optional[str], role: Role) -> User:
-    """Admin: create a staff user (Doctor/Receptionist/Photographer/Admin)."""
+
+async def create_staff_user(
+    *,
+    phone: str,
+    username: str,
+    password: str,
+    name: Optional[str],
+    role: Role,
+) -> User:
+    """Admin: create a staff user (Doctor/Receptionist/Photographer/Admin) بحساب username/password."""
     if role not in {Role.DOCTOR, Role.RECEPTIONIST, Role.PHOTOGRAPHER, Role.ADMIN}:
         raise HTTPException(status_code=400, detail="Invalid role for staff creation")
+
     if await User.find_one(User.phone == phone):
         raise HTTPException(status_code=400, detail="Phone already exists")
+    if await User.find_one(User.username == username):
+        raise HTTPException(status_code=400, detail="Username already exists")
 
-    user = User(phone=phone, name=name, role=role)
+    user = User(
+        phone=phone,
+        name=name,
+        role=role,
+        username=username,
+        password_hash=hash_password(password),
+    )
     await user.insert()
+
     if role == Role.DOCTOR:
         await Doctor(user_id=user.id).insert()
-    if role == Role.PATIENT:
-        from os import urandom
 
-        tmp_qr = f"tmp-{urandom(8).hex()}"
-        p = Patient(user_id=user.id, qr_code_data=tmp_qr)
-        await p.insert()
-        await ensure_patient_qr(p)
+    # لا ننشئ مرضى هنا؛ المرضى يتم إنشاؤهم عبر OTP أو create_patient
     return user
 
 

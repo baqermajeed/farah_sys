@@ -1,8 +1,10 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
+
 from app.constants import Role
 
 # -------------------- Auth / User Schemas --------------------
+
 
 class UserBase(BaseModel):
     name: Optional[str] = None
@@ -11,6 +13,7 @@ class UserBase(BaseModel):
     age: Optional[int] = None
     city: Optional[str] = None
 
+
 class UserOut(UserBase):
     id: str
     role: Role
@@ -18,12 +21,23 @@ class UserOut(UserBase):
     class Config:
         from_attributes = True
 
+
 class OTPRequestIn(BaseModel):
     phone: str
 
+
 class OTPVerifyIn(UserBase):
     """Verify OTP؛ إنشاء مستخدم جديد دائمًا كمريض عند عدم وجوده."""
+
     code: str
+
+
+class StaffLoginIn(BaseModel):
+    """Body بديل (في حال احتجته) لتسجيل دخول الطاقم؛ حاليًا نستخدم OAuth2PasswordRequestForm."""
+
+    username: str
+    password: str
+
 
 class Token(BaseModel):
     access_token: str
