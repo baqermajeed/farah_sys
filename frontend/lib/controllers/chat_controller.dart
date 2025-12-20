@@ -1,0 +1,171 @@
+import 'package:get/get.dart';
+import 'package:farah_sys_final/models/message_model.dart';
+import 'package:farah_sys_final/services/chat_service.dart';
+import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/controllers/auth_controller.dart';
+
+class ChatController extends GetxController {
+  final _chatService = ChatService();
+  
+  final RxList<MessageModel> messages = <MessageModel>[].obs;
+  final RxBool isLoading = false.obs;
+  final RxBool isConnected = false.obs;
+  String? currentPatientId;
+
+  @override
+  void onClose() {
+    _chatService.disconnect();
+    super.onClose();
+  }
+
+  // جلب الرسائل من API
+  Future<void> loadMessages({
+    required String patientId,
+    int limit = 50,
+    String? before,
+  }) async {
+    if (AuthController.demoMode) {
+      // بيانات تجريبية
+      isLoading.value = true;
+      currentPatientId = patientId;
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      final now = DateTime.now();
+      messages.value = [
+        MessageModel(
+          id: '1',
+          senderId: 'demo_doctor_1',
+          receiverId: patientId,
+          message: 'مرحباً، كيف حالك اليوم؟',
+          timestamp: now.subtract(const Duration(hours: 2)),
+          isRead: true,
+        ),
+        MessageModel(
+          id: '2',
+          senderId: patientId,
+          receiverId: 'demo_doctor_1',
+          message: 'الحمد لله بخير، شكراً لك',
+          timestamp: now.subtract(const Duration(hours: 1, minutes: 45)),
+          isRead: true,
+        ),
+        MessageModel(
+          id: '3',
+          senderId: 'demo_doctor_1',
+          receiverId: patientId,
+          message: 'متى يمكنك الحضور للمراجعة؟',
+          timestamp: now.subtract(const Duration(minutes: 30)),
+          isRead: false,
+        ),
+      ];
+      
+      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      isLoading.value = false;
+      return;
+    }
+    try {
+      isLoading.value = true;
+      currentPatientId = patientId;
+      
+      final messagesList = await _chatService.getMessages(
+        patientId: patientId,
+        limit: limit,
+        before: before,
+      );
+      
+      messages.value = messagesList;
+      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    } on ApiException catch (e) {
+      Get.snackbar('خطأ', e.message);
+    } catch (e) {
+      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل الرسائل');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // الاتصال بـ WebSocket
+  Future<void> connectWebSocket(String patientId) async {
+    if (AuthController.demoMode) {
+      // في وضع العرض، لا نحتاج WebSocket
+      currentPatientId = patientId;
+      isConnected.value = true;
+      return;
+    }
+    try {
+      currentPatientId = patientId;
+      
+      await _chatService.connectWebSocket(
+        patientId: patientId,
+        onMessage: (message) {
+          messages.add(message);
+          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        },
+        onConnected: () {
+          isConnected.value = true;
+        },
+        onError: (error) {
+          isConnected.value = false;
+          Get.snackbar('خطأ', 'انقطع الاتصال');
+        },
+      );
+    } catch (e) {
+      Get.snackbar('خطأ', 'فشل الاتصال');
+    }
+  }
+
+  // إرسال رسالة
+  Future<void> sendMessage(String content) async {
+    if (AuthController.demoMode) {
+      // في وضع العرض، نضيف الرسالة مباشرة
+      final tempMessage = MessageModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        senderId: 'demo_patient_1',
+        receiverId: 'demo_doctor_1',
+        message: content,
+        timestamp: DateTime.now(),
+        isRead: false,
+      );
+      messages.add(tempMessage);
+      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      return;
+    }
+    try {
+      if (!_chatService.isConnected) {
+        if (currentPatientId != null) {
+          await connectWebSocket(currentPatientId!);
+        } else {
+          throw ApiException('غير متصل');
+        }
+      }
+      
+      _chatService.sendMessage(content);
+      
+      // إضافة الرسالة محلياً (سيتم استبدالها بالرسالة من السيرفر)
+      final tempMessage = MessageModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        senderId: '', // سيتم ملؤه من السيرفر
+        receiverId: '',
+        message: content,
+        timestamp: DateTime.now(),
+        isRead: false,
+      );
+      messages.add(tempMessage);
+    } on ApiException catch (e) {
+      Get.snackbar('خطأ', e.message);
+    } catch (e) {
+      Get.snackbar('خطأ', 'حدث خطأ أثناء إرسال الرسالة');
+    }
+  }
+
+  // قطع الاتصال
+  void disconnect() {
+    _chatService.disconnect();
+    isConnected.value = false;
+  }
+
+  List<MessageModel> getUnreadMessages(String userId) {
+    return messages.where((message) {
+      return message.receiverId == userId && !message.isRead;
+    }).toList();
+  }
+}
