@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
-import 'package:farah_sys_final/core/widgets/custom_button.dart';
-import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
+import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
@@ -30,156 +30,363 @@ class OtpVerificationScreen extends StatefulWidget {
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final AuthController _authController = Get.find<AuthController>();
-  final TextEditingController _otpController = TextEditingController();
-  final FocusNode _otpFocusNode = FocusNode();
+  final List<TextEditingController> _otpControllers = List.generate(4, (_) => TextEditingController());
+  final List<FocusNode> _otpFocusNodes = List.generate(4, (_) => FocusNode());
+  Timer? _timer;
+  int _remainingSeconds = 60;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel(); // Cancel existing timer if any
+    setState(() {
+      _remainingSeconds = 60; // Reset to 60 seconds
+    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        if (_remainingSeconds > 0) {
+          setState(() {
+            _remainingSeconds--;
+          });
+        } else {
+          timer.cancel();
+          setState(() {}); // Update UI when timer reaches 0
+        }
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  String _formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  void _onOtpChanged(int index, String value) {
+    if (value.isNotEmpty && index < 3) {
+      _otpFocusNodes[index + 1].requestFocus();
+    }
+    if (value.isEmpty && index > 0) {
+      _otpFocusNodes[index - 1].requestFocus();
+    }
+    _verifyOtp();
+  }
+
+  void _verifyOtp() {
+    final otp = _otpControllers.map((c) => c.text).join();
+    if (otp.length == 4) {
+      _authController.verifyOtpAndLogin(
+        phoneNumber: widget.phoneNumber,
+        code: otp,
+        name: widget.name,
+        gender: widget.gender,
+        age: widget.age,
+        city: widget.city,
+        returnToReception: widget.isRegistration,
+      );
+    }
+  }
+
+  void _onKeypadPressed(String value) {
+    for (int i = 0; i < _otpControllers.length; i++) {
+      if (_otpControllers[i].text.isEmpty) {
+        _otpControllers[i].text = value;
+        _onOtpChanged(i, value);
+        break;
+      }
+    }
+  }
+
+  void _onBackspacePressed() {
+    for (int i = _otpControllers.length - 1; i >= 0; i--) {
+      if (_otpControllers[i].text.isNotEmpty) {
+        _otpControllers[i].clear();
+        _otpFocusNodes[i].requestFocus();
+        break;
+      }
+    }
+  }
 
   @override
   void dispose() {
-    _otpController.dispose();
-    _otpFocusNode.dispose();
+    _timer?.cancel();
+    for (var controller in _otpControllers) {
+      controller.dispose();
+    }
+    for (var focusNode in _otpFocusNodes) {
+      focusNode.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.onboardingBackground,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 32.h),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Get.back(),
-                    child: Container(
-                      padding: EdgeInsets.all(12.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Icon(
-                        Icons.arrow_back,
-                        color: AppColors.primary,
-                        size: 24.sp,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 48.h),
-              // Verification Image
-              Image.asset(
-                'image_ui/تحقق.png',
-                width: 180.w,
-                height: 180.h,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 120.w,
-                    height: 120.h,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.primaryLight.withValues(alpha: 0.3),
-                    ),
-                    child: Icon(
-                      Icons.sms_outlined,
-                      size: 60.sp,
-                      color: AppColors.primary,
-                    ),
-                  );
-                },
-              ),
-              SizedBox(height: 32.h),
-              Text(
-                'التحقق من الرمز',
-                style: TextStyle(
-                  fontSize: 28.sp,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              SizedBox(height: 16.h),
-              Text(
-                'أدخل رمز التحقق المرسل إلى',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              SizedBox(height: 8.h),
-              Text(
-                widget.phoneNumber,
-                style: TextStyle(
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              SizedBox(height: 48.h),
-              CustomTextField(
-                labelText: 'رمز التحقق',
-                hintText: '0000',
-                controller: _otpController,
-                keyboardType: TextInputType.number,
-                focusNode: _otpFocusNode,
-                maxLength: 6,
-              ),
-              SizedBox(height: 24.h),
-              Obx(() => CustomButton(
-                    text: 'تحقق',
-                    onPressed: _authController.isLoading.value
-                        ? null
-                        : () async {
-                            if (_otpController.text.length < 4) {
-                              Get.snackbar(
-                                'خطأ',
-                                'يرجى إدخال رمز التحقق',
-                                snackPosition: SnackPosition.TOP,
+        child: Stack(
+          children: [
+            // Main content
+            Column(
+              children: [
+                // Top section with logo and OTP fields
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24.w),
+                      child: Column(
+                        children: [
+                          SizedBox(height: 56.h),
+                          SizedBox(height: 12.h),
+                          // Logo
+                          Image.asset(
+                            'assets/images/logo.png',
+                            width: 120.w,
+                            height: 120.h,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: 120.w,
+                                height: 120.h,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: AppColors.primaryLight.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.local_hospital,
+                                  size: 60.sp,
+                                  color: AppColors.primary,
+                                ),
                               );
-                              return;
-                            }
-
-                            await _authController.verifyOtpAndLogin(
-                              phoneNumber: widget.phoneNumber,
-                              code: _otpController.text,
-                              name: widget.name,
-                              gender: widget.gender,
-                              age: widget.age,
-                              city: widget.city,
-                              returnToReception: widget.isRegistration,
-                            );
-                          },
-                    width: double.infinity,
-                    isLoading: _authController.isLoading.value,
-                  )),
-              SizedBox(height: 24.h),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'لم تستلم الرمز؟',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  GestureDetector(
-                    onTap: () async {
-                      await _authController.requestOtp(widget.phoneNumber);
-                    },
-                    child: Text(
-                      'إعادة الإرسال',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
+                            },
+                          ),
+                          SizedBox(height: 24.h),
+                          // Timer
+                          Text(
+                            _formatTime(_remainingSeconds),
+                            style: TextStyle(
+                              fontFamily: 'Expo Arabic',
+                              fontSize: 48.sp,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 16.h),
+                          // Instruction text
+                          Text(
+                            'يرجى إدخال رمز التحقق الذي أرسلناه إلى هاتفك الخاص',
+                            textAlign: TextAlign.center,
+                            textDirection: TextDirection.rtl,
+                            style: TextStyle(
+                              fontFamily: 'Expo Arabic',
+                              fontSize: 16.sp,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          SizedBox(height: 32.h),
+                          // OTP Input Fields
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(4, (index) {
+                              final reversedIndex = 3 - index; // Reverse order: 3, 2, 1, 0
+                              return Container(
+                                margin: EdgeInsets.symmetric(horizontal: 8.w),
+                                width: 60.w,
+                                height: 60.w, // Use same value for square shape
+                                child: TextField(
+                                  controller: _otpControllers[reversedIndex],
+                                  focusNode: _otpFocusNodes[reversedIndex],
+                                  textAlign: TextAlign.center,
+                                  keyboardType: TextInputType.number,
+                                  maxLength: 1,
+                                  readOnly: true,
+                                  showCursor: false,
+                                  enableInteractiveSelection: false,
+                                  style: TextStyle(
+                                    fontSize: 24.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                  decoration: InputDecoration(
+                                    counterText: '',
+                                    filled: true,
+                                    fillColor: _otpControllers[reversedIndex].text.isNotEmpty
+                                        ? AppColors.secondary
+                                        : Colors.transparent,
+                                    contentPadding: EdgeInsets.zero,
+                                    isDense: true,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12.r),
+                                      borderSide: BorderSide(
+                                        color: _otpControllers[reversedIndex].text.isNotEmpty
+                                            ? AppColors.secondary
+                                            : AppColors.primaryLight.withValues(alpha: 0.5),
+                                        width: 2,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12.r),
+                                      borderSide: BorderSide(
+                                        color: _otpControllers[reversedIndex].text.isNotEmpty
+                                            ? AppColors.secondary
+                                            : AppColors.primaryLight.withValues(alpha: 0.5),
+                                        width: 2,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12.r),
+                                      borderSide: BorderSide(
+                                        color: AppColors.secondary,
+                                        width: 2,
+                                      ),
+                                    ),
+                                  ),
+                                  onChanged: (value) => _onOtpChanged(reversedIndex, value),
+                                  onTap: () {
+                                    _otpFocusNodes[reversedIndex].requestFocus();
+                                  },
+                                ),
+                              );
+                            }),
+                          ),
+                          SizedBox(height: 24.h),
+                          // Resend code link
+                          GestureDetector(
+                            onTap: _remainingSeconds == 0
+                                ? () async {
+                                    _startTimer(); // Start timer immediately
+                                    await _authController.requestOtp(widget.phoneNumber);
+                                  }
+                                : null,
+                            child: Text(
+                              'إعادة إرسال الكود',
+                              textAlign: TextAlign.center,
+                              textDirection: TextDirection.rtl,
+                              style: TextStyle(
+                                fontFamily: 'Expo Arabic',
+                                fontSize: 16.sp,
+                                color: _remainingSeconds == 0
+                                    ? AppColors.secondary
+                                    : AppColors.textSecondary.withValues(alpha: 0.5),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
+                ),
+                // Numeric Keypad
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+                  child: Column(
+                    children: [
+                      // Row 1: 3, 2, 1 (RTL)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        textDirection: TextDirection.rtl,
+                        children: ['3', '2', '1'].map((num) {
+                          return _buildKeypadButton(num);
+                        }).toList(),
+                      ),
+                      SizedBox(height: 16.h),
+                      // Row 2: 6, 5, 4 (RTL)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        textDirection: TextDirection.rtl,
+                        children: ['6', '5', '4'].map((num) {
+                          return _buildKeypadButton(num);
+                        }).toList(),
+                      ),
+                      SizedBox(height: 16.h),
+                      // Row 3: 9, 8, 7 (RTL)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        textDirection: TextDirection.rtl,
+                        children: ['9', '8', '7'].map((num) {
+                          return _buildKeypadButton(num);
+                        }).toList(),
+                      ),
+                      SizedBox(height: 16.h),
+                      // Row 4: backspace, 0 (RTL)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        textDirection: TextDirection.rtl,
+                        children: [
+                          _buildBackspaceButton(),
+                          SizedBox(width: 60.w),
+                          _buildKeypadButton('0'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // Back button
+            Positioned(top: 16.h, left: 16, child: BackButtonWidget()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKeypadButton(String number) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _onKeypadPressed(number),
+        borderRadius: BorderRadius.circular(12.r),
+        child: Container(
+          width: 60.w,
+          height: 60.h,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(12.r),
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: TextStyle(
+                fontSize: 28.sp,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
               ),
-            ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackspaceButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _onBackspacePressed,
+        borderRadius: BorderRadius.circular(12.r),
+        child: Container(
+          width: 60.w,
+          height: 60.h,
+          decoration: BoxDecoration(
+            color: AppColors.primaryLight.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(12.r),
+          ),
+          child: Center(
+            child: Icon(
+              Icons.backspace_outlined,
+              size: 24.sp,
+              color: AppColors.textPrimary,
+            ),
           ),
         ),
       ),

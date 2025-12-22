@@ -1,5 +1,6 @@
 class AppRoutes {
   static const String splash = '/';
+  static const String onboarding = '/onboarding';
   static const String userSelection = '/user-selection';
   static const String patientLogin = '/patient-login';
   static const String doctorLogin = '/doctor-login';

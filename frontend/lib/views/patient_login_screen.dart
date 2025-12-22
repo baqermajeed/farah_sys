@@ -3,8 +3,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/widgets/custom_button.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
+import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 
@@ -28,136 +28,186 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.onboardingBackground,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 32.h),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Get.back(),
-                    child: Container(
-                      padding: EdgeInsets.all(12.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Icon(
-                        Icons.arrow_back,
-                        color: AppColors.primary,
-                        size: 24.sp,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 24.h),
-              // Login Image
-              Image.asset(
-                'image_ui/تسجيل دخول.png',
-                width: 250.w,
-                height: 200.h,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 200.w,
-                    height: 200.h,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.primaryLight.withValues(alpha: 0.3),
-                    ),
-                    child: Icon(
-                      Icons.local_hospital,
-                      size: 100.sp,
-                      color: AppColors.primary,
-                    ),
-                  );
-                },
-              ),
-              SizedBox(height: 32.h),
-              Text(
-                AppStrings.login,
-                style: TextStyle(
-                  fontSize: 28.sp,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              SizedBox(height: 8.h),
-              Text(
-                'أدخل رقم هاتفك لتسجيل الدخول',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              SizedBox(height: 48.h),
-              CustomTextField(
-                labelText: AppStrings.phoneNumber,
-                hintText: '0000 000 0000',
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-              ),
-              SizedBox(height: 48.h),
-              Obx(() => CustomButton(
-                    text: AppStrings.login,
-                    onPressed: _authController.isLoading.value
-                        ? null
-                        : () async {
-                            if (_phoneController.text.isEmpty) {
-                              Get.snackbar(
-                                'خطأ',
-                                'يرجى إدخال رقم الهاتف',
-                                snackPosition: SnackPosition.TOP,
+        child: Stack(
+          children: [
+            // Main content with padding
+            SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24.w),
+                child: Column(
+                  children: [
+                    SizedBox(height: 56.h),
+                    SizedBox(height: 12.h),
+                    // Logo with background tooth icon
+                    SizedBox(
+                      height: 250.h,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Large faint tooth icon in background
+                          Positioned(
+                            child: Opacity(
+                              opacity: 0.85,
+                              child: Image.asset(
+                                'assets/images/tooth_logo.png',
+                                width: 280.w,
+                                height: 280.h,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                          // Main logo
+                          Image.asset(
+                            'assets/images/logo.png',
+                            width: 140.w,
+                            height: 140.h,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: 140.w,
+                                height: 140.h,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: AppColors.primaryLight.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.local_hospital,
+                                  size: 70.sp,
+                                  color: AppColors.primary,
+                                ),
                               );
-                              return;
-                            }
-
-                            await _authController.requestOtp(
-                              _phoneController.text.trim(),
-                            );
-
-                            // Navigate to OTP verification
-                            Get.toNamed(
-                              AppRoutes.otpVerification,
-                              arguments: {
-                                'phoneNumber': _phoneController.text.trim(),
-                                'isRegistration': false,
-                              },
-                            );
-                          },
-                    width: double.infinity,
-                    isLoading: _authController.isLoading.value,
-                  )),
-              SizedBox(height: 24.h),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    AppStrings.noAccount,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  GestureDetector(
-                    onTap: () {
-                      Get.toNamed(AppRoutes.addPatient);
-                    },
-                    child: Text(
-                      AppStrings.createAccountNow,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
+                            },
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                    SizedBox(height: 16.h),
+                    // Login title
+                    Text(
+                      AppStrings.login,
+                      style: TextStyle(
+                        fontFamily: 'Expo Arabic',
+                        fontSize: 22.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 24.h),
+                    // Phone number field
+                    CustomTextField(
+                      labelText: AppStrings.phoneNumber,
+                      hintText: '0000 000 0000',
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    SizedBox(height: 24.h),
+                    // Login button (without icon)
+                    Obx(
+                      () => Container(
+                        width: double.infinity,
+                        height: 50.h,
+                        decoration: BoxDecoration(
+                          color: _authController.isLoading.value
+                              ? AppColors.textHint
+                              : AppColors.secondary,
+                          borderRadius: BorderRadius.circular(16.r),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _authController.isLoading.value
+                                ? null
+                                : () async {
+                                    if (_phoneController.text.isEmpty) {
+                                      Get.snackbar(
+                                        'خطأ',
+                                        'يرجى إدخال رقم الهاتف',
+                                        snackPosition: SnackPosition.TOP,
+                                      );
+                                      return;
+                                    }
+
+                                    await _authController.requestOtp(
+                                      _phoneController.text.trim(),
+                                    );
+
+                                    // Navigate to OTP verification
+                                    Get.toNamed(
+                                      AppRoutes.otpVerification,
+                                      arguments: {
+                                        'phoneNumber': _phoneController.text
+                                            .trim(),
+                                        'isRegistration': false,
+                                      },
+                                    );
+                                  },
+                            borderRadius: BorderRadius.circular(16.r),
+                            child: Center(
+                              child: _authController.isLoading.value
+                                  ? SizedBox(
+                                      width: 20.w,
+                                      height: 20.h,
+                                      child: const CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              AppColors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : Text(
+                                      AppStrings.login,
+                                      style: TextStyle(
+                                        fontFamily: 'Expo Arabic',
+                                        fontSize: 16.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.white,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 24.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          AppStrings.noAccount,
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        GestureDetector(
+                          onTap: () {
+                            Get.toNamed(AppRoutes.addPatient);
+                          },
+                          child: Text(
+                            AppStrings.createAccountNow,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            ),
+            // Back button positioned at top left without padding
+            Positioned(top: 16.h, left: 16, child: BackButtonWidget()),
+          ],
         ),
       ),
     );

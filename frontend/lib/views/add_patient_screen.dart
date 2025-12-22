@@ -3,9 +3,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/widgets/custom_button.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/gender_selector.dart';
+import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 
@@ -45,64 +45,85 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.onboardingBackground,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Get.back(),
-                    child: Container(
-                      padding: EdgeInsets.all(12.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Icon(
-                        Icons.arrow_back,
-                        color: AppColors.primary,
-                        size: 24.sp,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
+            // Main content with padding
+            SingleChildScrollView(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 24.w),
                 child: Column(
                   children: [
-                    SizedBox(height: 16.h),
-                    CircleAvatar(
-                      radius: 60.r,
-                      backgroundColor: AppColors.primaryLight.withValues(alpha: 0.3),
-                      child: Icon(
-                        Icons.person,
-                        size: 60.sp,
-                        color: AppColors.primary,
+                    SizedBox(height: 56.h),
+                    SizedBox(height: 12.h),
+                    // Logo with background tooth icon
+                    SizedBox(
+                      height: 150.h,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Large faint tooth icon in background
+                          Positioned(
+                            child: Opacity(
+                              opacity: 0.85,
+                              child: Image.asset(
+                                'assets/images/tooth_logo.png',
+                                width: 180.w,
+                                height: 180.h,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                          // Main logo
+                          Image.asset(
+                            'assets/images/logo.png',
+                            width: 90.w,
+                            height: 90.h,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: 90.w,
+                                height: 90.h,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: AppColors.primaryLight.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.local_hospital,
+                                  size: 45.sp,
+                                  color: AppColors.primary,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     SizedBox(height: 16.h),
+                    // Title
                     Text(
-                      AppStrings.login,
+                      'إنشاء حساب',
+                      textAlign: TextAlign.right,
                       style: TextStyle(
-                        fontSize: 24.sp,
+                        fontFamily: 'Expo Arabic',
+                        fontSize: 22.sp,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
+                        color: AppColors.textPrimary,
                       ),
                     ),
-                    SizedBox(height: 32.h),
+                    SizedBox(height: 24.h),
                     CustomTextField(
-                      labelText: AppStrings.patientName,
+                      labelText: AppStrings.name,
                       hintText: AppStrings.enterYourName,
                       controller: _nameController,
                     ),
                     SizedBox(height: 24.h),
                     Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           AppStrings.gender,
@@ -155,65 +176,107 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: 48.h),
-                    Obx(() => CustomButton(
-                          text: AppStrings.addButton,
-                          onPressed: _authController.isLoading.value
-                              ? null
-                              : () async {
-                                  if (_nameController.text.isEmpty ||
-                                      _phoneController.text.isEmpty ||
-                                      selectedGender == null ||
-                                      selectedCity == null ||
-                                      _ageController.text.isEmpty) {
-                                    Get.snackbar(
-                                      'خطأ',
-                                      'يرجى ملء جميع الحقول',
-                                      snackPosition: SnackPosition.TOP,
+                    SizedBox(height: 24.h),
+                    // Add button (without icon)
+                    Obx(
+                      () => Container(
+                        width: double.infinity,
+                        height: 50.h,
+                        decoration: BoxDecoration(
+                          color: _authController.isLoading.value
+                              ? AppColors.textHint
+                              : AppColors.secondary,
+                          borderRadius: BorderRadius.circular(16.r),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _authController.isLoading.value
+                                ? null
+                                : () async {
+                                    if (_nameController.text.isEmpty ||
+                                        _phoneController.text.isEmpty ||
+                                        selectedGender == null ||
+                                        selectedCity == null ||
+                                        _ageController.text.isEmpty) {
+                                      Get.snackbar(
+                                        'خطأ',
+                                        'يرجى ملء جميع الحقول',
+                                        snackPosition: SnackPosition.TOP,
+                                      );
+                                      return;
+                                    }
+
+                                    final age = int.tryParse(
+                                      _ageController.text,
                                     );
-                                    return;
-                                  }
+                                    if (age == null || age < 1 || age > 120) {
+                                      Get.snackbar(
+                                        'خطأ',
+                                        'يرجى إدخال عمر صحيح',
+                                        snackPosition: SnackPosition.TOP,
+                                      );
+                                      return;
+                                    }
 
-                                  final age = int.tryParse(_ageController.text);
-                                  if (age == null || age < 1 || age > 120) {
-                                    Get.snackbar(
-                                      'خطأ',
-                                      'يرجى إدخال عمر صحيح',
-                                      snackPosition: SnackPosition.TOP,
+                                    // Request OTP first
+                                    await _authController.registerPatient(
+                                      name: _nameController.text.trim(),
+                                      phoneNumber: _phoneController.text.trim(),
+                                      gender: selectedGender!,
+                                      age: age,
+                                      city: selectedCity!,
                                     );
-                                    return;
-                                  }
 
-                                  // Request OTP first
-                                  await _authController.registerPatient(
-                                    name: _nameController.text.trim(),
-                                    phoneNumber: _phoneController.text.trim(),
-                                    gender: selectedGender!,
-                                    age: age,
-                                    city: selectedCity!,
-                                  );
-
-                                  // Navigate to OTP verification
-                                  Get.toNamed(
-                                    AppRoutes.otpVerification,
-                                    arguments: {
-                                      'phoneNumber': _phoneController.text.trim(),
-                                      'name': _nameController.text.trim(),
-                                      'gender': selectedGender,
-                                      'age': age,
-                                      'city': selectedCity,
-                                      'isRegistration': true,
-                                    },
-                                  );
-                                },
-                          width: double.infinity,
-                          isLoading: _authController.isLoading.value,
-                        )),
+                                    // Navigate to OTP verification
+                                    Get.toNamed(
+                                      AppRoutes.otpVerification,
+                                      arguments: {
+                                        'phoneNumber': _phoneController.text
+                                            .trim(),
+                                        'name': _nameController.text.trim(),
+                                        'gender': selectedGender,
+                                        'age': age,
+                                        'city': selectedCity,
+                                        'isRegistration': true,
+                                      },
+                                    );
+                                  },
+                            borderRadius: BorderRadius.circular(16.r),
+                            child: Center(
+                              child: _authController.isLoading.value
+                                  ? SizedBox(
+                                      width: 20.w,
+                                      height: 20.h,
+                                      child: const CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              AppColors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : Text(
+                                      AppStrings.addButton,
+                                      style: TextStyle(
+                                        fontFamily: 'Expo Arabic',
+                                        fontSize: 16.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.white,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                     SizedBox(height: 32.h),
                   ],
                 ),
               ),
             ),
+            // Back button positioned at top left without padding
+            Positioned(top: 16.h, left: 16, child: BackButtonWidget()),
           ],
         ),
       ),

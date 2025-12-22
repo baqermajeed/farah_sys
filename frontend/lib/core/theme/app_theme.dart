@@ -14,7 +14,7 @@ class AppTheme {
         surface: AppColors.white,
         error: AppColors.error,
       ),
-      fontFamily: 'Cairo',
+      fontFamily: 'Expo Arabic',
       textTheme: TextTheme(
         displayLarge: TextStyle(
           fontSize: 32.sp,
@@ -74,7 +74,7 @@ class AppTheme {
           fontSize: 20.sp,
           fontWeight: FontWeight.bold,
           color: AppColors.textPrimary,
-          fontFamily: 'Cairo',
+          fontFamily: 'Expo Arabic',
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -89,7 +89,7 @@ class AppTheme {
           textStyle: TextStyle(
             fontSize: 16.sp,
             fontWeight: FontWeight.bold,
-            fontFamily: 'Cairo',
+            fontFamily: 'Expo Arabic',
           ),
         ),
       ),
@@ -104,7 +104,7 @@ class AppTheme {
           textStyle: TextStyle(
             fontSize: 16.sp,
             fontWeight: FontWeight.bold,
-            fontFamily: 'Cairo',
+            fontFamily: 'Expo Arabic',
           ),
         ),
       ),

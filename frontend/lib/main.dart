@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:farah_sys_final/core/theme/app_theme.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/views/splash_screen.dart';
+import 'package:farah_sys_final/views/onboarding_screen.dart';
 import 'package:farah_sys_final/views/user_selection_screen.dart';
 import 'package:farah_sys_final/views/patient_login_screen.dart';
 import 'package:farah_sys_final/views/doctor_login_screen.dart';
@@ -77,10 +78,14 @@ class MyApp extends StatelessWidget {
           title: 'عيادة فرح',
           theme: AppTheme.lightTheme,
           debugShowCheckedModeBanner: false,
-          // اجعل أول شاشة تظهر هي شاشة اختيار نوع المستخدم
-          initialRoute: AppRoutes.userSelection,
+          // اجعل أول شاشة تظهر هي شاشة الـ Splash
+          initialRoute: AppRoutes.splash,
           getPages: [
             GetPage(name: AppRoutes.splash, page: () => const SplashScreen()),
+            GetPage(
+              name: AppRoutes.onboarding,
+              page: () => const OnboardingScreen(),
+            ),
             GetPage(
               name: AppRoutes.userSelection,
               page: () => const UserSelectionScreen(),

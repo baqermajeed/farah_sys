@@ -44,12 +44,17 @@ class CustomTextField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (labelText != null) ...[
-          Text(
-            labelText!,
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              labelText!,
+              textAlign: TextAlign.right,
+              textDirection: TextDirection.rtl,
+              style: TextStyle(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textPrimary,
+              ),
             ),
           ),
           SizedBox(height: 8.h),
@@ -64,6 +69,7 @@ class CustomTextField extends StatelessWidget {
           onTap: onTap,
           maxLines: maxLines,
           textAlign: textAlign,
+          textDirection: TextDirection.rtl,
           focusNode: focusNode,
           maxLength: maxLength,
           style: TextStyle(
@@ -72,9 +78,11 @@ class CustomTextField extends StatelessWidget {
           ),
           decoration: InputDecoration(
             hintText: hintText,
+            hintTextDirection: TextDirection.rtl,
             prefixIcon: prefixIcon,
             suffixIcon: suffixIcon,
             counterText: maxLength != null ? '' : null,
+            contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
           ),
         ),
       ],

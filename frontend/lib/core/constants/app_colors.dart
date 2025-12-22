@@ -20,4 +20,10 @@ class AppColors {
   static const Color warning = Color(0xFFF39C12);
   static const Color error = Color(0xFFE74C3C);
   static const Color info = Color(0xFF3498DB);
+
+  // Onboarding Colors
+  static const Color onboardingBackground = Color(0xFFF2FCFF); // very light blue
+  static const Color onboardingDarkBlue = Color(0xFF3F6683); // rectangle behind illustration
+  static const Color onboardingTitle = Color(0xFFF8B23C); // orange title
+  static const Color onboardingButton = Color(0xFF4A88B8); // buttons and controls
 }

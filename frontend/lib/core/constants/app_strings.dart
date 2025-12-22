@@ -88,4 +88,17 @@ class AppStrings {
   static const String ok = 'حسناً';
   static const String hello = 'أهلا و سهلاً بك , بالتأكيد يمكنك !';
   static const String isEmergency = 'هل الحالة طارئة ؟';
+
+  // Onboarding Screen
+  static const String skip = 'تخطي';
+  static const String start = 'ابدأ';
+  static const String onboardingSlide1Title = '" ابتسامتك علينا 😁✨ "';
+  static const String onboardingSlide1Description =
+      'تابع مواعيدك وسجلاتك بكل سهولة، وخلي ابتسامتك دوم حلوة ومتلألئة';
+  static const String onboardingSlide2Title = '" اطباء تثق بيهم 💉 "';
+  static const String onboardingSlide2Description =
+      'أطباء معتمدون، معلومات دقيقة، وتجربة سهلة في كل خطوة.';
+  static const String onboardingSlide3Title = '" احچي ويا طبيبك براحتك ✏️ "';
+  static const String onboardingSlide3Description =
+      'دز لطبيبك أسئلة أو استفسارات بأي وقت، ورده يوصلك فورًا';
 }

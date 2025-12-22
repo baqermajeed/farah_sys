@@ -5,8 +5,6 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 
-import 'doctor_home_screen.dart';
-
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -64,8 +62,8 @@ class _SplashScreenState extends State<SplashScreen>
         Get.offAllNamed(AppRoutes.userSelection);
       }
     } else {
-      // No user logged in, go to user selection
-      Get.offNamed(AppRoutes.dentalImplantTimeline);
+      // No user logged in, go to onboarding
+      Get.offAllNamed(AppRoutes.onboarding);
     }
   }
 
