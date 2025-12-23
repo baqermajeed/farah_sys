@@ -1,8 +1,26 @@
 class ApiConstants {
   // Base URL - يمكن تغييره حسب البيئة
-  // للـ iPhone Simulator استخدم IP الجهاز بدلاً من localhost
-  // مثال: 'http://192.168.0.105:8000' (استبدل بالـ IP الخاص بك)
-  static const String baseUrl = 'http://192.168.0.108:8000';
+  // تأكد من أن الباكند يعمل على 0.0.0.0:8000 وليس localhost فقط
+  // للتأكد: py -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+  // اختر الـ URL المناسب حسب نوع الجهاز:
+  // - Android Emulator: http://10.0.2.2:8000
+  // - iOS Simulator: http://localhost:8000
+  // - Physical Device: http://[IP_الجهاز_الذي_يعمل_عليه_الباكند]:8000
+  //   مثال: http://192.168.0.112:8000 (استبدل بالـ IP الخاص بك)
+  //
+  // كيفية الحصول على IP جهاز الكمبيوتر:
+  // Windows: ipconfig (ابحث عن IPv4 Address)
+  // Linux/Mac: ifconfig أو ip addr
+
+  // للـ Android Emulator:
+  // static const String baseUrl = 'http://10.0.2.2:8000';
+
+  // للـ Physical Device (استبدل بالـ IP الخاص بجهازك):
+  static const String baseUrl = 'http://192.168.0.112:8001';
+
+  // للـ iOS Simulator (على نفس الجهاز):
+  // static const String baseUrl = 'http://localhost:8000';
 
   // API Endpoints
   static const String authRequestOtp = '/auth/request-otp';

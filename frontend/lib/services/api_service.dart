@@ -3,10 +3,8 @@ import 'package:dio/dio.dart'
     as dio
     show Response, FormData, MultipartFile, Options;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:get/get.dart';
 import 'package:farah_sys_final/core/network/api_constants.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -105,16 +103,39 @@ class ApiService {
     dio.FormData? formData,
     dio.Options? options,
   }) async {
+    final fullUrl = '${ApiConstants.baseUrl}$endpoint';
+    print('🌐 [ApiService] POST Request');
+    print('   📍 Endpoint: $endpoint');
+    print('   🔗 Full URL: $fullUrl');
+    print('   📦 Data type: ${formData != null ? 'FormData' : 'JSON'}');
+    if (formData != null) {
+      print('   📋 FormData fields: ${formData.fields}');
+    } else if (data != null) {
+      print('   📋 JSON Data: $data');
+    }
+    if (options?.headers != null) {
+      print('   📝 Headers: ${options!.headers}');
+    }
+    
     try {
       final response = await _dio.post(
         endpoint,
         data: formData ?? data,
         options: options,
       );
+      print('✅ [ApiService] POST Success');
+      print('   📊 Status Code: ${response.statusCode}');
+      print('   📦 Response Data: ${response.data}');
       return response;
     } on DioException catch (e) {
+      print('❌ [ApiService] POST DioException');
+      print('   🔴 Error Type: ${e.type}');
+      print('   🔴 Status Code: ${e.response?.statusCode}');
+      print('   🔴 Response Data: ${e.response?.data}');
+      print('   🔴 Error Message: ${e.message}');
       throw _handleDioError(e);
     } catch (e) {
+      print('❌ [ApiService] POST General Error: $e');
       throw NetworkException(e.toString());
     }
   }
@@ -222,17 +243,26 @@ class ApiService {
   }
 
   ApiException _handleDioError(DioException error) {
+    print('🔧 [ApiService] _handleDioError called');
+    print('   Error Type: ${error.type}');
+    print('   Status Code: ${error.response?.statusCode}');
+    print('   Response Data: ${error.response?.data}');
+    
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
+        print('   ⏱️ Timeout error');
         return NetworkException('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى.');
       case DioExceptionType.badResponse:
         final statusCode = error.response?.statusCode;
         final message =
             error.response?.data?['detail'] ??
             error.response?.data?['message'] ??
+            error.response?.statusMessage ??
             'حدث خطأ في الخادم';
+
+        print('   🚨 Bad Response: $statusCode - $message');
 
         if (statusCode == 401) {
           return UnauthorizedException(message);
@@ -242,9 +272,14 @@ class ApiService {
           return ServerException(message, statusCode: statusCode);
         }
       case DioExceptionType.cancel:
+        print('   🚫 Request cancelled');
         return NetworkException('تم إلغاء الطلب');
+      case DioExceptionType.connectionError:
+        print('   🔌 Connection error - Server may be down or URL incorrect');
+        return NetworkException('خطأ في الاتصال. تأكد من أن السيرفر يعمل وأن الـ URL صحيح.');
       case DioExceptionType.unknown:
       default:
+        print('   ❓ Unknown error: ${error.message}');
         return NetworkException('خطأ في الاتصال. تأكد من اتصالك بالإنترنت.');
     }
   }

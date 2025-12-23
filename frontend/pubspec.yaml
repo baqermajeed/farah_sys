@@ -47,6 +47,7 @@ dependencies:
 
   # HTTP Client
   dio: ^5.4.0
+  http: ^1.1.0
 
   # Secure Storage for tokens
   flutter_secure_storage: ^9.0.0
@@ -65,6 +66,12 @@ dependencies:
 
   # Page Indicator for Onboarding
   smooth_page_indicator: ^1.1.0
+
+  # Image Picker
+  image_picker: ^1.0.7
+
+  # HTTP Parser for file uploads
+  http_parser: ^4.0.2
 
 dev_dependencies:
   flutter_test:

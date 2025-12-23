@@ -18,7 +18,7 @@ from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.services import patient_service
 from app.utils.r2_clinic import upload_clinic_image
-from app.models import Doctor
+from app.models import Doctor, User
 
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
 MAX_IMAGE_MB = 10
@@ -49,7 +49,16 @@ async def my_patients(
     # Map to PatientOut combining user fields
     out: List[PatientOut] = []
     for p in patients:
-        u = p.user
+        # جلب User مباشرة بدلاً من الاعتماد على p.user
+        try:
+            u = await User.get(p.user_id)
+            if not u:
+                print(f"⚠️ Warning: Patient {p.id} has no user (user_id: {p.user_id}), skipping...")
+                continue
+        except Exception as e:
+            print(f"❌ Error fetching user for patient {p.id}: {e}")
+            continue
+            
         out.append(PatientOut(
             id=str(p.id), user_id=str(p.user_id), name=u.name, phone=u.phone, gender=u.gender,
             age=u.age, city=u.city, treatment_type=p.treatment_type,

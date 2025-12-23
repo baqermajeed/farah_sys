@@ -42,11 +42,16 @@ class UserModel {
   factory UserModel.fromJson(Map<String, dynamic> json) {
     // دعم كلا التنسيقين: Backend API و Hive
     final role = json['role'] ?? json['userType'] ?? '';
+    final mappedUserType = _mapRoleToUserType(role);
+    
+    // Log for debugging
+    print('📋 [UserModel] fromJson - role: $role, mapped to: $mappedUserType');
+    
     return UserModel(
       id: json['id']?.toString() ?? '',
       name: json['name'] ?? '',
       phoneNumber: json['phone'] ?? json['phoneNumber'] ?? '',
-      userType: _mapRoleToUserType(role),
+      userType: mappedUserType,
       gender: json['gender'],
       age: json['age'],
       city: json['city'],

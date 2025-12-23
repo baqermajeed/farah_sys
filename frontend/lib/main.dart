@@ -17,6 +17,7 @@ import 'package:farah_sys_final/views/patient_profile_screen.dart';
 import 'package:farah_sys_final/views/edit_patient_profile_screen.dart';
 import 'package:farah_sys_final/views/qr_code_screen.dart';
 import 'package:farah_sys_final/views/doctor_patients_list_screen.dart';
+import 'package:farah_sys_final/views/doctor_home_screen.dart';
 import 'package:farah_sys_final/views/patient_details_screen.dart';
 import 'package:farah_sys_final/views/medical_records_screen.dart';
 import 'package:farah_sys_final/views/doctor_chats_screen.dart';
@@ -119,6 +120,10 @@ class MyApp extends StatelessWidget {
             GetPage(
               name: AppRoutes.patientHome,
               page: () => const PatientHomeScreen(),
+            ),
+            GetPage(
+              name: AppRoutes.doctorHome,
+              page: () => const DoctorHomeScreen(),
             ),
             GetPage(
               name: AppRoutes.doctorPatientsList,

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dio/dio.dart' as dio;
 import 'package:farah_sys_final/services/api_service.dart';
 import 'package:farah_sys_final/core/network/api_constants.dart';
@@ -5,6 +6,7 @@ import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/models/medical_record_model.dart';
+import 'package:farah_sys_final/models/gallery_image_model.dart';
 
 class DoctorService {
   final _api = ApiService();
@@ -15,6 +17,10 @@ class DoctorService {
     int limit = 50,
   }) async {
     try {
+      print('🏥 [DoctorService] Fetching patients for doctor...');
+      print('   📋 Endpoint: ${ApiConstants.doctorPatients}');
+      print('   📋 Skip: $skip, Limit: $limit');
+      
       final response = await _api.get(
         ApiConstants.doctorPatients,
         queryParameters: {
@@ -23,15 +29,57 @@ class DoctorService {
         },
       );
 
+      print('🏥 [DoctorService] Response status: ${response.statusCode}');
+      print('🏥 [DoctorService] Response data type: ${response.data.runtimeType}');
+      print('🏥 [DoctorService] Response data: ${response.data}');
+      
       if (response.statusCode == 200) {
-        final data = response.data as List;
-        return data
+        // Handle different response formats
+        dynamic responseData = response.data;
+        
+        // Check if it's already a List
+        if (responseData is! List) {
+          print('⚠️ [DoctorService] Response is not a List, trying to parse...');
+          // Maybe it's wrapped in a map?
+          if (responseData is Map) {
+            if (responseData.containsKey('data')) {
+              responseData = responseData['data'];
+            } else if (responseData.containsKey('patients')) {
+              responseData = responseData['patients'];
+            } else {
+              print('❌ [DoctorService] Response is a Map but no data/patients key found');
+              print('   Keys: ${responseData.keys}');
+              throw ApiException('تنسيق استجابة غير متوقع من السيرفر');
+            }
+          } else {
+            print('❌ [DoctorService] Response is neither List nor Map');
+            throw ApiException('تنسيق استجابة غير متوقع من السيرفر');
+          }
+        }
+        
+        final data = responseData as List;
+        print('🏥 [DoctorService] Found ${data.length} patients');
+        
+        if (data.isEmpty) {
+          print('⚠️ [DoctorService] No patients found. Make sure patients are assigned to this doctor.');
+          print('   💡 Patients need to have primary_doctor_id or secondary_doctor_id set.');
+        } else {
+          print('🏥 [DoctorService] First patient sample: ${data.isNotEmpty ? data.first : "N/A"}');
+        }
+        
+        final patients = data
             .map((json) => _mapPatientOutToModel(json))
             .toList();
+        
+        print('✅ [DoctorService] Successfully mapped ${patients.length} patients');
+        return patients;
       } else {
+        print('❌ [DoctorService] Failed with status: ${response.statusCode}');
+        print('❌ [DoctorService] Response: ${response.data}');
         throw ApiException('فشل جلب قائمة المرضى');
       }
     } catch (e) {
+      print('❌ [DoctorService] Error: $e');
       if (e is ApiException) {
         rethrow;
       }
@@ -290,13 +338,52 @@ class DoctorService {
     }
   }
 
-  // جلب معرض صور المريض
-  Future<List<Map<String, dynamic>>> getPatientGallery({
-    required String patientId,
+  // رفع صورة إلى معرض المريض
+  Future<GalleryImageModel> uploadGalleryImage(
+    String patientId,
+    File imageFile,
+    String? note,
+  ) async {
+    try {
+      print('📸 [DoctorService] Uploading gallery image for patient: $patientId');
+      
+      final formData = dio.FormData.fromMap({
+        'image': await dio.MultipartFile.fromFile(
+          imageFile.path,
+          filename: imageFile.path.split('/').last,
+        ),
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+
+      final response = await _api.post(
+        ApiConstants.doctorPatientGallery(patientId),
+        formData: formData,
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ [DoctorService] Image uploaded successfully');
+        return GalleryImageModel.fromJson(response.data);
+      } else {
+        throw ApiException('فشل رفع الصورة');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error uploading image: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل رفع الصورة: ${e.toString()}');
+    }
+  }
+
+  // جلب قائمة صور معرض المريض
+  Future<List<GalleryImageModel>> getPatientGallery(
+    String patientId, {
     int skip = 0,
     int limit = 50,
   }) async {
     try {
+      print('📸 [DoctorService] Fetching gallery for patient: $patientId');
+      
       final response = await _api.get(
         ApiConstants.doctorPatientGallery(patientId),
         queryParameters: {
@@ -307,15 +394,19 @@ class DoctorService {
 
       if (response.statusCode == 200) {
         final data = response.data as List;
-        return data.cast<Map<String, dynamic>>();
+        print('✅ [DoctorService] Fetched ${data.length} gallery images');
+        return data
+            .map((json) => GalleryImageModel.fromJson(json as Map<String, dynamic>))
+            .toList();
       } else {
-        throw ApiException('فشل جلب المعرض');
+        throw ApiException('فشل جلب صور المعرض');
       }
     } catch (e) {
+      print('❌ [DoctorService] Error fetching gallery: $e');
       if (e is ApiException) {
         rethrow;
       }
-      throw ApiException('فشل جلب المعرض: ${e.toString()}');
+      throw ApiException('فشل جلب صور المعرض: ${e.toString()}');
     }
   }
 

@@ -55,8 +55,14 @@ async def verify_otp_and_login(
     city: Optional[str] = None,
 ) -> tuple[str, User]:
     """Verify OTP؛ يسمح فقط للمريض، وينشئ حساب مريض إن لم يوجد. يرجع (jwt, user)."""
+    print(f"🔍 [AuthService] verify_otp_and_login called")
+    print(f"   📱 Phone: {phone}")
+    print(f"   🔑 Code: {code}")
+    
     now = datetime.now(timezone.utc)
+    print(f"   ⏰ Current time (UTC): {now}")
 
+    print(f"   🔍 Searching for OTP request...")
     otp = (
         await OTPRequest.find(OTPRequest.phone == phone)
         .sort(-OTPRequest.created_at)
@@ -64,30 +70,43 @@ async def verify_otp_and_login(
     )
 
     if not otp:
+        print(f"   ❌ OTP not found for phone: {phone}")
         raise HTTPException(status_code=400, detail="OTP not found")
+    
+    print(f"   ✅ OTP found: created_at={otp.created_at}, expires_at={otp.expires_at}")
 
     expires_at = otp.expires_at
     if expires_at is not None and expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-    if expires_at < now or otp.code_hash != _hash_code(code):
+    code_hash = _hash_code(code)
+    print(f"   🔐 Code hash comparison: stored={otp.code_hash[:20]}..., provided={code_hash[:20]}...")
+    print(f"   ⏰ Expiry check: expires_at={expires_at}, now={now}, expired={expires_at < now}")
+
+    if expires_at < now or otp.code_hash != code_hash:
+        print(f"   ❌ Invalid or expired code")
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
+    print(f"   ✅ OTP code is valid")
     # Mark as used
     otp.verified_at = now
     await otp.save()
+    print(f"   ✅ OTP marked as verified")
 
     # Lookup or create user
+    print(f"   🔍 Looking up user by phone: {phone}")
     user = await User.find_one(User.phone == phone)
 
     # إن وجد مستخدم وليس مريضًا فلا نسمح باستخدام OTP له
     if user and user.role != Role.PATIENT:
+        print(f"   ❌ User found but not a patient: role={user.role.value}")
         raise HTTPException(
             status_code=400,
             detail="OTP login is allowed for patients only",
         )
 
     if not user:
+        print(f"   👤 User not found, creating new patient user...")
         user = User(
             name=name,
             phone=phone,
@@ -97,14 +116,20 @@ async def verify_otp_and_login(
             city=city,
         )
         await user.insert()
+        print(f"   ✅ User created: {user.id}")
         # qr_code_data is unique, so avoid inserting empty string which may conflict
         from os import urandom
 
         tmp_qr = f"tmp-{urandom(8).hex()}"
         patient = Patient(user_id=user.id, qr_code_data=tmp_qr, qr_image_path=None)
         await patient.insert()
+        print(f"   ✅ Patient profile created: {patient.id}")
         await ensure_patient_qr(patient)
+        print(f"   ✅ QR code generated")
+    else:
+        print(f"   ✅ Existing user found: {user.name} (ID: {user.id})")
 
+    print(f"   🎫 Creating access token...")
     token = create_access_token(
         {
             "sub": str(user.id),
@@ -112,6 +137,7 @@ async def verify_otp_and_login(
             "phone": user.phone,
         }
     )
+    print(f"   ✅ Token created successfully")
     return token, user
 
 
@@ -120,22 +146,41 @@ async def verify_otp_and_login(
 
 async def staff_login_with_password(*, username: str, password: str) -> tuple[str, User]:
     """تسجيل دخول الطبيب/الاستقبال/المصور/المدير عن طريق username + password."""
+    print(f"🔍 [AuthService] staff_login_with_password called")
+    print(f"   👤 Searching for user with username: {username}")
+    
     user = await User.find_one(User.username == username)
+    
     if not user:
+        print(f"   ❌ User not found with username: {username}")
         raise HTTPException(status_code=400, detail="Invalid credentials")
-
+    
+    print(f"   ✅ User found: {user.name} (ID: {user.id}, Role: {user.role.value})")
+    print(f"   🔍 Checking role...")
+    
     if user.role not in {
         Role.ADMIN,
         Role.DOCTOR,
         Role.RECEPTIONIST,
         Role.PHOTOGRAPHER,
     }:
+        print(f"   ❌ Invalid role for staff login: {user.role.value}")
         # لا يسمح للمرضى باستخدام هذا النوع من تسجيل الدخول
         raise HTTPException(status_code=400, detail="Invalid credentials")
-
-    if not verify_password(password, user.password_hash):
+    
+    print(f"   ✅ Role is valid for staff login")
+    print(f"   🔍 Verifying password...")
+    
+    password_valid = verify_password(password, user.password_hash)
+    print(f"   🔐 Password verification result: {password_valid}")
+    
+    if not password_valid:
+        print(f"   ❌ Password verification failed")
         raise HTTPException(status_code=400, detail="Invalid credentials")
-
+    
+    print(f"   ✅ Password verified successfully")
+    print(f"   🎫 Creating access token...")
+    
     token = create_access_token(
         {
             "sub": str(user.id),
@@ -144,4 +189,5 @@ async def staff_login_with_password(*, username: str, password: str) -> tuple[st
             "username": user.username,
         }
     )
+    print(f"   ✅ Token created successfully")
     return token, user

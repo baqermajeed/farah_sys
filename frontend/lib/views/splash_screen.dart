@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -50,21 +51,54 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     final authController = Get.find<AuthController>();
-    final user = authController.currentUser.value;
-
-    if (user != null) {
-      // User is logged in, navigate to appropriate home
-      if (user.userType == 'patient') {
-        Get.offAllNamed(AppRoutes.patientHome);
-      } else if (user.userType == 'doctor') {
-        Get.offAllNamed(AppRoutes.doctorPatientsList);
+    
+    // التحقق من وجود توكن محفوظ أولاً
+    final authService = AuthService();
+    final isLoggedIn = await authService.isLoggedIn();
+    
+    if (isLoggedIn) {
+      // إذا كان هناك توكن، انتظر تحميل معلومات المستخدم
+      // (قد يكون التحميل قيد التنفيذ في onInit)
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      final user = authController.currentUser.value;
+      
+      if (user != null) {
+        // User is logged in, navigate to appropriate home
+        print('🔀 [SplashScreen] Navigating to home for ${user.userType}');
+        if (user.userType == 'patient') {
+          Get.offAllNamed(AppRoutes.patientHome);
+        } else if (user.userType == 'doctor') {
+          Get.offAllNamed(AppRoutes.doctorHome);
+        } else if (user.userType == 'receptionist') {
+          Get.offAllNamed(AppRoutes.receptionHome);
+        } else {
+          Get.offAllNamed(AppRoutes.userSelection);
+        }
+        return;
       } else {
-        Get.offAllNamed(AppRoutes.userSelection);
+        // إذا كان هناك توكن لكن لم يتم تحميل المستخدم بعد، حاول مرة أخرى
+        print('⏳ [SplashScreen] Token exists but user not loaded yet, waiting...');
+        await Future.delayed(const Duration(milliseconds: 1000));
+        final userRetry = authController.currentUser.value;
+        if (userRetry != null) {
+          if (userRetry.userType == 'patient') {
+            Get.offAllNamed(AppRoutes.patientHome);
+          } else if (userRetry.userType == 'doctor') {
+            Get.offAllNamed(AppRoutes.doctorHome);
+          } else if (userRetry.userType == 'receptionist') {
+            Get.offAllNamed(AppRoutes.receptionHome);
+          } else {
+            Get.offAllNamed(AppRoutes.userSelection);
+          }
+          return;
+        }
       }
-    } else {
-      // No user logged in, go to onboarding
-      Get.offAllNamed(AppRoutes.onboarding);
     }
+    
+    // No user logged in, go to onboarding
+    print('ℹ️ [SplashScreen] No logged in user, going to onboarding');
+    Get.offAllNamed(AppRoutes.onboarding);
   }
 
   @override

@@ -14,13 +14,14 @@ class EditPatientProfileScreen extends StatefulWidget {
   const EditPatientProfileScreen({super.key});
 
   @override
-  State<EditPatientProfileScreen> createState() => _EditPatientProfileScreenState();
+  State<EditPatientProfileScreen> createState() =>
+      _EditPatientProfileScreenState();
 }
 
 class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
   final AuthController _authController = Get.find<AuthController>();
   final PatientController _patientController = Get.find<PatientController>();
-  
+
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
@@ -46,11 +47,11 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
   void _loadCurrentData() {
     final user = _authController.currentUser.value;
     final profile = _patientController.myProfile.value;
-    
+
     _nameController.text = user?.name ?? profile?.name ?? '';
     _phoneController.text = user?.phoneNumber ?? profile?.phoneNumber ?? '';
     _ageController.text = (user?.age ?? profile?.age ?? 0).toString();
-    
+
     // تحويل الجنس من 'male'/'female' إلى 'ذكر'/'أنثى'
     final gender = user?.gender ?? profile?.gender;
     if (gender == 'male') {
@@ -60,7 +61,7 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     } else {
       selectedGender = gender;
     }
-    
+
     selectedCity = user?.city ?? profile?.city;
   }
 
@@ -138,10 +139,7 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.primary,
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.white,
-                            width: 2,
-                          ),
+                          border: Border.all(color: AppColors.white, width: 2),
                         ),
                         child: Icon(
                           Icons.camera_alt,
@@ -199,7 +197,10 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
                   SizedBox(height: 8.h),
                   Container(
                     width: double.infinity,
-                    padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 20.w,
+                      vertical: 16.h,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.white,
                       borderRadius: BorderRadius.circular(16.r),
@@ -238,70 +239,69 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
                 ],
               ),
               SizedBox(height: 48.h),
-              Obx(() => CustomButton(
-                    text: 'حفظ التغييرات',
-                    onPressed: _patientController.isLoading.value
-                        ? null
-                        : () async {
-                            if (_nameController.text.isEmpty) {
-                              Get.snackbar(
-                                'خطأ',
-                                'يرجى إدخال الاسم',
-                                snackPosition: SnackPosition.TOP,
-                              );
-                              return;
-                            }
+              Obx(
+                () => CustomButton(
+                  text: 'حفظ التغييرات',
+                  onPressed: _patientController.isLoading.value
+                      ? null
+                      : () async {
+                          if (_nameController.text.isEmpty) {
+                            Get.snackbar(
+                              'خطأ',
+                              'يرجى إدخال الاسم',
+                              snackPosition: SnackPosition.TOP,
+                            );
+                            return;
+                          }
 
-                            // في وضع العرض، نحدث البيانات محلياً فقط
-                            if (AuthController.demoMode) {
-                              final user = _authController.currentUser.value;
-                              if (user != null) {
-                                // تحويل الجنس من 'ذكر'/'أنثى' إلى 'male'/'female'
-                                String? genderValue;
-                                if (selectedGender == AppStrings.male) {
-                                  genderValue = 'male';
-                                } else if (selectedGender == AppStrings.female) {
-                                  genderValue = 'female';
-                                } else {
-                                  genderValue = selectedGender;
-                                }
-                                
-                                _authController.currentUser.value = user.copyWith(
-                                  name: _nameController.text,
-                                  age: int.tryParse(_ageController.text),
-                                  gender: genderValue,
-                                  city: selectedCity,
-                                );
-                                
-                                // تحديث ملف المريض أيضاً
-                                final profile = _patientController.myProfile.value;
-                                if (profile != null) {
-                                  _patientController.myProfile.value = PatientModel(
-                                    id: profile.id,
-                                    name: _nameController.text,
-                                    phoneNumber: profile.phoneNumber,
-                                    gender: genderValue ?? profile.gender,
-                                    age: int.tryParse(_ageController.text) ?? profile.age,
-                                    city: selectedCity ?? profile.city,
-                                    imageUrl: profile.imageUrl,
-                                    doctorId: profile.doctorId,
-                                    treatmentHistory: profile.treatmentHistory,
-                                  );
-                                }
-                                
-                                Get.snackbar('نجح', 'تم حفظ التغييرات (وضع العرض)');
-                                Get.back();
-                              }
-                            } else {
-                              // TODO: Update via API
-                              Get.snackbar('نجح', 'تم حفظ التغييرات');
-                              Get.back();
-                            }
-                          },
-                    width: double.infinity,
-                    isLoading: _patientController.isLoading.value,
-                    backgroundColor: AppColors.primary,
-                  )),
+                          // TODO: Update via API
+                          // تحويل الجنس من 'ذكر'/'أنثى' إلى 'male'/'female'
+                          String? genderValue;
+                          if (selectedGender == AppStrings.male) {
+                            genderValue = 'male';
+                          } else if (selectedGender == AppStrings.female) {
+                            genderValue = 'female';
+                          } else {
+                            genderValue = selectedGender;
+                          }
+
+                          // تحديث البيانات محلياً (سيتم استبدالها بالـ API لاحقاً)
+                          final user = _authController.currentUser.value;
+                          if (user != null) {
+                            _authController.currentUser.value = user.copyWith(
+                              name: _nameController.text,
+                              age: int.tryParse(_ageController.text),
+                              gender: genderValue,
+                              city: selectedCity,
+                            );
+                          }
+
+                          // تحديث ملف المريض أيضاً
+                          final profile = _patientController.myProfile.value;
+                          if (profile != null) {
+                            _patientController.myProfile.value = PatientModel(
+                              id: profile.id,
+                              name: _nameController.text,
+                              phoneNumber: profile.phoneNumber,
+                              gender: genderValue ?? profile.gender,
+                              age:
+                                  int.tryParse(_ageController.text) ??
+                                  profile.age,
+                              city: selectedCity ?? profile.city,
+                              imageUrl: profile.imageUrl,
+                              doctorId: profile.doctorId,
+                              treatmentHistory: profile.treatmentHistory,
+                            );
+                          }
+
+                          Get.snackbar('نجح', 'تم حفظ التغييرات');
+                          Get.back();
+                        },
+                  width: double.infinity,
+                  isLoading: _patientController.isLoading.value,
+                  backgroundColor: AppColors.primary,
+                ),
+              ),
             ],
           ),
         ),
@@ -309,4 +309,3 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     );
   }
 }
-

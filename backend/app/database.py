@@ -11,7 +11,10 @@ async def init_db() -> None:
     """Initialize MongoDB (Beanie) and register document models."""
     global _mongo_client
     _mongo_client = AsyncIOMotorClient(settings.MONGODB_URI)
-    db_name = settings.MONGODB_URI.rsplit("/", 1)[-1]
+    # Extract database name from URI, default to 'clinic_db' if not specified
+    db_name = settings.MONGODB_URI.rsplit("/", 1)[-1].split("?")[0]  # Remove query params
+    if not db_name:
+        db_name = "clinic_db"  # Default database name
     from app.models import (
         User,
         Doctor,

@@ -1,9 +1,15 @@
 """
-سكريبت لإضافة بيانات تجريبية شاملة للنظام
-يُنشئ: مستخدمين، مرضى، مواعيد، سجلات علاجية
+Seed script to populate database with initial data
+Creates: users, patients, appointments, treatment notes
 """
 import asyncio
+import sys
 from datetime import datetime, timedelta, timezone
+
+# Fix encoding for Windows console
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 from app.config import get_settings
 from app.database import init_db
@@ -13,113 +19,168 @@ from app.services.admin_service import create_staff_user, create_patient, assign
 from app.services.patient_service import create_note, create_appointment, set_treatment_type
 
 
+async def _create_or_get_staff(*, phone: str, username: str, password: str, name: str, role: Role) -> User:
+    """Create staff user if not exists, return existing if found."""
+    existing = await User.find_one(User.username == username)
+    if existing:
+        print(f"[SKIP] User '{username}' already exists")
+        return existing
+    
+    try:
+        user = await create_staff_user(
+            phone=phone,
+            username=username,
+            password=password,
+            name=name,
+            role=role,
+        )
+        print(f"[OK] Created {role.value}: {name} ({username})")
+        return user
+    except Exception as e:
+        print(f"[ERROR] Failed to create {username}: {e}")
+        existing = await User.find_one(User.phone == phone)
+        if existing:
+            return existing
+        raise
+
+
 async def create_demo_users():
-    """إنشاء المستخدمين الأساسيين (Admin, Doctor, Receptionist)"""
-    print("\n=== إنشاء المستخدمين ===")
+    """Create basic staff users (Admin, Doctor, Receptionist, Photographer)"""
+    print("\n=== Creating Staff Users ===")
     
     # Admin
-    admin = await create_staff_user(
+    admin = await _create_or_get_staff(
         phone="07700000001",
         username="admin",
         password="admin123",
-        name="مدير النظام",
+        name="System Admin",
         role=Role.ADMIN,
     )
-    print(f"✓ تم إنشاء المدير: {admin.name} ({admin.username})")
     
     # Doctor
-    doctor = await create_staff_user(
+    doctor = await _create_or_get_staff(
         phone="07700000000",
         username="baqer121",
         password="12345",
-        name="د. باقر",
+        name="Dr. Baqer",
         role=Role.DOCTOR,
     )
-    print(f"✓ تم إنشاء الطبيب: {doctor.name} ({doctor.username})")
     
     # Receptionist
-    reception = await create_staff_user(
+    reception = await _create_or_get_staff(
         phone="07700000002",
         username="reception1",
         password="12345",
-        name="موظف الاستقبال",
+        name="Receptionist",
         role=Role.RECEPTIONIST,
     )
-    print(f"✓ تم إنشاء موظف الاستقبال: {reception.name} ({reception.username})")
     
-    return admin, doctor, reception
+    # Photographer
+    photographer = await _create_or_get_staff(
+        phone="07700000003",
+        username="photographer1",
+        password="12345",
+        name="Photographer",
+        role=Role.PHOTOGRAPHER,
+    )
+    
+    return admin, doctor, reception, photographer
 
 
 async def create_demo_patients():
-    """إنشاء مرضى تجريبيين"""
-    print("\n=== إنشاء المرضى ===")
+    """Create demo patients"""
+    print("\n=== Creating Patients ===")
     
     patients_data = [
         {
             "phone": "07701234567",
-            "name": "أحمد محمد",
+            "name": "Ahmed Mohammed",
             "gender": "male",
             "age": 35,
-            "city": "بغداد",
+            "city": "Baghdad",
         },
         {
             "phone": "07701234568",
-            "name": "فاطمة علي",
+            "name": "Fatima Ali",
             "gender": "female",
             "age": 28,
-            "city": "البصرة",
+            "city": "Basra",
         },
         {
             "phone": "07701234569",
-            "name": "حسن كريم",
+            "name": "Hassan Karim",
             "gender": "male",
             "age": 42,
-            "city": "بغداد",
+            "city": "Baghdad",
         },
         {
             "phone": "07701234570",
-            "name": "زينب أحمد",
+            "name": "Zainab Ahmed",
             "gender": "female",
             "age": 25,
-            "city": "الموصل",
+            "city": "Mosul",
         },
         {
             "phone": "07701234571",
-            "name": "علي محمود",
+            "name": "Ali Mahmoud",
             "gender": "male",
             "age": 50,
-            "city": "بغداد",
+            "city": "Baghdad",
+        },
+        {
+            "phone": "07701234572",
+            "name": "Sara Ibrahim",
+            "gender": "female",
+            "age": 32,
+            "city": "Erbil",
+        },
+        {
+            "phone": "07701234573",
+            "name": "Omar Hassan",
+            "gender": "male",
+            "age": 29,
+            "city": "Baghdad",
         },
     ]
     
     patients = []
     for data in patients_data:
         try:
+            existing_user = await User.find_one(User.phone == data["phone"])
+            if existing_user:
+                existing_patient = await Patient.find_one(Patient.user_id == existing_user.id)
+                if existing_patient:
+                    print(f"[SKIP] Patient {data['name']} already exists ({data['phone']})")
+                    patients.append(existing_patient)
+                    continue
             patient = await create_patient(**data)
             patients.append(patient)
-            user = await User.get(patient.user_id)
-            print(f"✓ تم إنشاء المريض: {user.name} ({user.phone})")
+            print(f"[OK] Created patient: {data['name']} ({data['phone']})")
         except Exception as e:
-            print(f"✗ فشل إنشاء المريض {data['name']}: {e}")
+            print(f"[ERROR] Failed to create patient {data['name']}: {e}")
     
     return patients
 
 
 async def assign_patients_to_doctor(patients, doctor_user):
-    """ربط المرضى بالطبيب"""
-    print("\n=== ربط المرضى بالطبيب ===")
+    """Assign patients to doctor"""
+    print("\n=== Assigning Patients to Doctor ===")
     
-    # الحصول على ملف الطبيب
     doctor = await Doctor.find_one(Doctor.user_id == doctor_user.id)
     if not doctor:
-        print("✗ لم يتم العثور على ملف الطبيب")
+        print("[ERROR] Doctor profile not found")
         return
     
     doctor_id = str(doctor.id)
     
-    # ربط المرضى بالطبيب الأساسي
     for patient in patients:
         try:
+            # Only assign if not already assigned
+            if patient.primary_doctor_id:
+                user = await User.get(patient.user_id)
+                print(f"[SKIP] Patient {user.name} already has a primary doctor")
+                continue
+                
             await assign_patient_to_doctors(
                 patient_id=str(patient.id),
                 primary_doctor_id=doctor_id,
@@ -127,60 +188,66 @@ async def assign_patients_to_doctor(patients, doctor_user):
                 assigned_by_user_id=str(doctor_user.id),
             )
             user = await User.get(patient.user_id)
-            print(f"✓ تم ربط المريض {user.name} بالطبيب {doctor_user.name}")
+            print(f"[OK] Assigned patient {user.name} to doctor {doctor_user.name}")
         except Exception as e:
-            print(f"✗ فشل ربط المريض: {e}")
+            print(f"[ERROR] Failed to assign patient: {e}")
 
 
 async def create_demo_appointments(patients, doctor_user):
-    """إنشاء مواعيد تجريبية"""
-    print("\n=== إنشاء المواعيد ===")
+    """Create demo appointments"""
+    print("\n=== Creating Appointments ===")
     
     doctor = await Doctor.find_one(Doctor.user_id == doctor_user.id)
     if not doctor:
-        print("✗ لم يتم العثور على ملف الطبيب")
+        print("[ERROR] Doctor profile not found")
         return
     
     doctor_id = str(doctor.id)
     now = datetime.now(timezone.utc)
     
-    # مواعيد مختلفة (ماضية، اليوم، غداً، مستقبلية)
+    # Various appointments (past, today, tomorrow, future)
     appointments_data = [
         {
             "patient": patients[0] if len(patients) > 0 else None,
             "scheduled_at": now - timedelta(days=5, hours=2),
-            "note": "فحص دوري - تم بنجاح",
+            "note": "Routine checkup - completed successfully",
             "status": "completed",
         },
         {
             "patient": patients[0] if len(patients) > 0 else None,
             "scheduled_at": now + timedelta(days=2, hours=10),
-            "note": "موعد متابعة العلاج",
+            "note": "Follow-up appointment",
             "status": "scheduled",
         },
         {
             "patient": patients[1] if len(patients) > 1 else None,
             "scheduled_at": now + timedelta(hours=3),
-            "note": "تنظيف أسنان",
+            "note": "Teeth cleaning",
             "status": "scheduled",
         },
         {
             "patient": patients[1] if len(patients) > 1 else None,
             "scheduled_at": now + timedelta(days=1, hours=14),
-            "note": "موعد متابعة",
+            "note": "Follow-up visit",
             "status": "scheduled",
         },
         {
             "patient": patients[2] if len(patients) > 2 else None,
             "scheduled_at": now + timedelta(days=7, hours=11),
-            "note": "فحص شامل",
+            "note": "Full examination",
             "status": "scheduled",
         },
         {
             "patient": patients[3] if len(patients) > 3 else None,
             "scheduled_at": now - timedelta(days=2),
-            "note": "علاج جذور - مكتمل",
+            "note": "Root canal treatment - completed",
             "status": "completed",
+        },
+        {
+            "patient": patients[4] if len(patients) > 4 else None,
+            "scheduled_at": now + timedelta(days=3, hours=15),
+            "note": "Consultation",
+            "status": "scheduled",
         },
     ]
     
@@ -189,6 +256,17 @@ async def create_demo_appointments(patients, doctor_user):
             continue
             
         try:
+            # Check if appointment already exists
+            existing = await Appointment.find_one(
+                Appointment.patient_id == apt_data["patient"].id,
+                Appointment.doctor_id == doctor.id,
+                Appointment.scheduled_at == apt_data["scheduled_at"]
+            )
+            if existing:
+                user = await User.get(apt_data["patient"].user_id)
+                print(f"[SKIP] Appointment for {user.name} at {apt_data['scheduled_at']} already exists")
+                continue
+                
             appointment = await create_appointment(
                 patient_id=str(apt_data["patient"].id),
                 doctor_id=doctor_id,
@@ -197,23 +275,22 @@ async def create_demo_appointments(patients, doctor_user):
                 image_path=None,
             )
             
-            # تحديث حالة الموعد
             appointment.status = apt_data["status"]
             await appointment.save()
             
             user = await User.get(apt_data["patient"].user_id)
-            print(f"✓ تم إنشاء موعد للمريض {user.name} في {apt_data['scheduled_at']}")
+            print(f"[OK] Created appointment for {user.name} at {apt_data['scheduled_at']}")
         except Exception as e:
-            print(f"✗ فشل إنشاء الموعد: {e}")
+            print(f"[ERROR] Failed to create appointment: {e}")
 
 
 async def create_demo_treatment_notes(patients, doctor_user):
-    """إنشاء سجلات علاجية تجريبية"""
-    print("\n=== إنشاء السجلات العلاجية ===")
+    """Create demo treatment notes"""
+    print("\n=== Creating Treatment Notes ===")
     
     doctor = await Doctor.find_one(Doctor.user_id == doctor_user.id)
     if not doctor:
-        print("✗ لم يتم العثور على ملف الطبيب")
+        print("[ERROR] Doctor profile not found")
         return
     
     doctor_id = str(doctor.id)
@@ -221,23 +298,27 @@ async def create_demo_treatment_notes(patients, doctor_user):
     notes_data = [
         {
             "patient": patients[0] if len(patients) > 0 else None,
-            "note": "فحص شامل - الأسنان في حالة جيدة. يوصى بتنظيف دوري كل 6 أشهر.",
+            "note": "Full examination - Teeth in good condition. Recommend regular cleaning every 6 months.",
         },
         {
             "patient": patients[0] if len(patients) > 0 else None,
-            "note": "علاج تجويف في الضرس العلوي الأيمن. تم الحشو بنجاح.",
+            "note": "Cavity treatment in upper right molar. Filling completed successfully.",
         },
         {
             "patient": patients[1] if len(patients) > 1 else None,
-            "note": "تنظيف أسنان احترافي. إزالة الجير والترسبات.",
+            "note": "Professional teeth cleaning. Removed tartar and deposits.",
         },
         {
             "patient": patients[2] if len(patients) > 2 else None,
-            "note": "فحص أولي - يحتاج المريض إلى تقويم أسنان. تم شرح الخيارات المتاحة.",
+            "note": "Initial examination - Patient needs braces. Explained available options.",
         },
         {
             "patient": patients[3] if len(patients) > 3 else None,
-            "note": "علاج جذور للضرس السفلي الأيسر. تم بنجاح.",
+            "note": "Root canal treatment for lower left molar. Completed successfully.",
+        },
+        {
+            "patient": patients[4] if len(patients) > 4 else None,
+            "note": "Routine checkup - No issues found. Continue regular oral hygiene.",
         },
     ]
     
@@ -254,29 +335,32 @@ async def create_demo_treatment_notes(patients, doctor_user):
             )
             
             user = await User.get(note_data["patient"].user_id)
-            print(f"✓ تم إنشاء سجل علاجي للمريض {user.name}")
+            print(f"[OK] Created treatment note for {user.name}")
         except Exception as e:
-            print(f"✗ فشل إنشاء السجل العلاجي: {e}")
+            print(f"[ERROR] Failed to create treatment note: {e}")
 
 
-async def set_treatment_types(patients):
-    """تعيين أنواع العلاج للمرضى"""
-    print("\n=== تعيين أنواع العلاج ===")
+async def set_treatment_types(patients, doctor_user):
+    """Set treatment types for patients"""
+    print("\n=== Setting Treatment Types ===")
     
     if not patients:
         return
     
-    doctor = await Doctor.find_one()
+    doctor = await Doctor.find_one(Doctor.user_id == doctor_user.id)
     if not doctor:
+        print("[ERROR] Doctor profile not found")
         return
     
     doctor_id = str(doctor.id)
     treatment_types = [
-        "تنظيف أسنان",
-        "علاج جذور",
-        "تقويم أسنان",
-        "زراعة أسنان",
-        "حشو أسنان",
+        "Teeth Cleaning",
+        "Root Canal",
+        "Braces",
+        "Dental Implant",
+        "Tooth Filling",
+        "Teeth Whitening",
+        "Extraction",
     ]
     
     for i, patient in enumerate(patients[:len(treatment_types)]):
@@ -287,58 +371,58 @@ async def set_treatment_types(patients):
                 treatment_type=treatment_types[i],
             )
             user = await User.get(patient.user_id)
-            print(f"✓ تم تعيين نوع العلاج '{treatment_types[i]}' للمريض {user.name}")
+            print(f"[OK] Set treatment type '{treatment_types[i]}' for {user.name}")
         except Exception as e:
-            print(f"✗ فشل تعيين نوع العلاج: {e}")
+            print(f"[ERROR] Failed to set treatment type: {e}")
 
 
 async def main():
-    """الدالة الرئيسية"""
+    """Main function"""
     print("=" * 50)
-    print("بدء إنشاء البيانات التجريبية")
+    print("Starting Initial Data Seeding")
     print("=" * 50)
     
     settings = get_settings()
     print(f"\nMongoDB URI: {settings.MONGODB_URI}")
     
-    # تهيئة الاتصال بقاعدة البيانات
     await init_db()
-    print("✓ تم الاتصال بقاعدة البيانات\n")
+    print("[OK] Connected to database\n")
     
     try:
-        # 1. إنشاء المستخدمين
-        admin, doctor, reception = await create_demo_users()
+        # 1. Create staff users
+        admin, doctor, reception, photographer = await create_demo_users()
         
-        # 2. إنشاء المرضى
+        # 2. Create patients
         patients = await create_demo_patients()
         
-        # 3. ربط المرضى بالطبيب
+        # 3. Assign patients to doctor
         await assign_patients_to_doctor(patients, doctor)
         
-        # 4. تعيين أنواع العلاج
-        await set_treatment_types(patients)
+        # 4. Set treatment types
+        await set_treatment_types(patients, doctor)
         
-        # 5. إنشاء المواعيد
+        # 5. Create appointments
         await create_demo_appointments(patients, doctor)
         
-        # 6. إنشاء السجلات العلاجية
+        # 6. Create treatment notes
         await create_demo_treatment_notes(patients, doctor)
         
         print("\n" + "=" * 50)
-        print("✓ تم إنشاء البيانات التجريبية بنجاح!")
+        print("[SUCCESS] Initial data seeding completed!")
         print("=" * 50)
-        print("\nبيانات تسجيل الدخول:")
-        print(f"  المدير: username=admin, password=admin123")
-        print(f"  الطبيب: username=baqer121, password=12345")
-        print(f"  الاستقبال: username=reception1, password=12345")
-        print(f"\nأرقام المرضى (لاختبار OTP):")
-        for i, patient in enumerate(patients[:5], 1):
+        print("\nLogin Credentials:")
+        print(f"  Admin: username=admin, password=admin123")
+        print(f"  Doctor: username=baqer121, password=12345")
+        print(f"  Receptionist: username=reception1, password=12345")
+        print(f"  Photographer: username=photographer1, password=12345")
+        print(f"\nPatient Phone Numbers (for OTP testing):")
+        for i, patient in enumerate(patients[:7], 1):
             user = await User.get(patient.user_id)
             print(f"  {i}. {user.name}: {user.phone}")
         print("\n" + "=" * 50)
         
     except Exception as e:
-        print(f"\n✗ حدث خطأ: {e}")
+        print(f"\n[ERROR] An error occurred: {e}")
         import traceback
         traceback.print_exc()
 

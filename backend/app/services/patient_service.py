@@ -43,28 +43,39 @@ async def get_patient_by_id(patient_id: str) -> Tuple[Patient, User]:
 async def list_doctor_patients(doctor_id: str, skip: int = 0, limit: Optional[int] = None) -> List[Patient]:
     """All patients assigned to this doctor (primary or secondary)."""
     skip, limit = _normalize_pagination(skip, limit)
-    did = OID(doctor_id)
+    try:
+        did = OID(doctor_id)
+    except Exception as e:
+        print(f"❌ Error converting doctor_id to OID: {doctor_id}, error: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid doctor_id format: {doctor_id}")
 
-    # Beanie v1.x لا يدعم استخدام عامل OR "|" مباشرة بين تعابير المقارنة بهذه الطريقة،
-    # لذلك نجلب المرضى الأساسيين والثانويين في استعلامين منفصلين ثم ندمج النتائج.
-    primary_patients = await Patient.find(Patient.primary_doctor_id == did).to_list()
-    secondary_patients = await Patient.find(Patient.secondary_doctor_id == did).to_list()
+    try:
+        # Beanie v1.x لا يدعم استخدام عامل OR "|" مباشرة بين تعابير المقارنة بهذه الطريقة،
+        # لذلك نجلب المرضى الأساسيين والثانويين في استعلامين منفصلين ثم ندمج النتائج.
+        primary_patients = await Patient.find(Patient.primary_doctor_id == did).to_list()
+        secondary_patients = await Patient.find(Patient.secondary_doctor_id == did).to_list()
 
-    # دمج القوائم مع إزالة التكرار (في حال كان الطبيب أساسيًا وثانويًا لنفس المريض)
-    patients_map: dict[OID, Patient] = {p.id: p for p in primary_patients}
-    for p in secondary_patients:
-        patients_map.setdefault(p.id, p)
+        # دمج القوائم مع إزالة التكرار (في حال كان الطبيب أساسيًا وثانويًا لنفس المريض)
+        patients_map: dict[OID, Patient] = {p.id: p for p in primary_patients}
+        for p in secondary_patients:
+            patients_map.setdefault(p.id, p)
 
-    patients = list(patients_map.values())
+        patients = list(patients_map.values())
 
-    # تطبيق التقطيع (skip / limit) بعد الدمج
-    if skip:
-        patients = patients[skip:]
-    if limit is not None:
-        patients = patients[:limit]
+        # تطبيق التقطيع (skip / limit) بعد الدمج
+        if skip:
+            patients = patients[skip:]
+        if limit is not None:
+            patients = patients[:limit]
 
-    await _attach_users(patients)
-    return patients
+        # لا نحتاج _attach_users هنا لأننا نجلب User مباشرة في router
+        # await _attach_users(patients)
+        return patients
+    except Exception as e:
+        print(f"❌ Error in list_doctor_patients: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error fetching patients: {str(e)}")
 
 async def update_patient_by_doctor(*, doctor_id: str, patient_id: str, data: PatientUpdate) -> Patient:
     """يسمح للطبيب بتعديل بيانات المريض إن كان من مرضاه (أساسي/ثانوي)."""

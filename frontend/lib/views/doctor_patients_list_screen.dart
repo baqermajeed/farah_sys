@@ -30,8 +30,8 @@ class DoctorPatientsListScreen extends StatelessWidget {
                 children: [
                   GestureDetector(
                     onTap: () {
-                      // Navigate back to reception home
-                      Get.offAllNamed(AppRoutes.receptionHome);
+                      // Navigate back to doctor home
+                      Get.offAllNamed(AppRoutes.doctorHome);
                     },
                     child: Container(
                       padding: EdgeInsets.all(12.w),

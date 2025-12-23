@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "dev"
     APP_DEBUG: bool = True
 
-    MONGODB_URI: str = "mongodb://localhost:27017/clinic"
+    MONGODB_URI: str = "mongodb://localhost:27017/"
 
     JWT_SECRET: str = "change_me_super_secret"
     JWT_ALGORITHM: str = "HS256"
