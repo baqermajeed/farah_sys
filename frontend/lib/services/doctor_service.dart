@@ -690,7 +690,7 @@ class DoctorService {
       gender: json['gender'] ?? '',
       age: json['age'] ?? 0,
       city: json['city'] ?? '',
-      imageUrl: json['qr_image_path'],
+      imageUrl: json['imageUrl'] ?? json['image_url'],
       doctorIds: json['doctor_ids'] != null
           ? List<String>.from(json['doctor_ids'])
           : (json['doctorIds'] != null

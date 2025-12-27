@@ -10,40 +10,71 @@ import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
+import 'package:farah_sys_final/services/chat_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-class PatientHomeScreen extends StatelessWidget {
+class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
+
+  @override
+  State<PatientHomeScreen> createState() => _PatientHomeScreenState();
+}
+
+class _PatientHomeScreenState extends State<PatientHomeScreen> {
+  final ChatService _chatService = ChatService();
+  final RxInt _unreadCount = 0.obs;
+
+  @override
+  void initState() {
+    super.initState();
+    // تأجيل تحميل البيانات حتى بعد اكتمال بناء الواجهة
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUnreadCount();
+      _loadData();
+    });
+  }
+
+  void _loadData() {
+    final patientController = Get.find<PatientController>();
+    final appointmentController = Get.find<AppointmentController>();
+
+    // تحميل البيانات فقط بدون أي تحقق أو إعادة توجيه
+    print('🏠 [PatientHomeScreen] Loading data...');
+    patientController.loadMyProfile().catchError((e) {
+      print('❌ [PatientHomeScreen] Error loading profile: $e');
+    });
+    // تحميل المواعيد بشكل مستقل
+    print('🏠 [PatientHomeScreen] Calling loadPatientAppointments...');
+    appointmentController.loadPatientAppointments().catchError((e) {
+      print('❌ [PatientHomeScreen] Error loading appointments: $e');
+    });
+    // تحميل معلومات الطبيب (يتم بشكل مستقل)
+    patientController.loadMyDoctor().catchError((e) {
+      print('❌ [PatientHomeScreen] Error loading doctor: $e');
+    });
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final chatList = await _chatService.getChatList();
+      if (chatList.isNotEmpty) {
+        // Patient has only one chat (with their doctor)
+        final unreadCount = chatList[0]['unread_count'] as int? ?? 0;
+        _unreadCount.value = unreadCount;
+      } else {
+        _unreadCount.value = 0;
+      }
+    } catch (e) {
+      print('❌ Error loading unread count: $e');
+      _unreadCount.value = 0;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final authController = Get.find<AuthController>();
     final patientController = Get.find<PatientController>();
     final appointmentController = Get.find<AppointmentController>();
-
-    // Load data on first build and check doctor assignment
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // التحقق من وجود طبيب مرتبط
-      final hasDoctor = await patientController.checkDoctorAssignment();
-      if (!hasDoctor) {
-        // إذا لم يكن هناك طبيب مرتبط، الانتقال إلى واجهة الترحيب
-        Get.offAllNamed(AppRoutes.patientWelcome);
-        return;
-      }
-      // إذا كان هناك طبيب، تحميل البيانات
-      print('🏠 [PatientHomeScreen] Loading data...');
-      patientController.loadMyProfile();
-      // تحميل المواعيد بشكل مستقل (حتى لو فشل loadMyDoctor)
-      print('🏠 [PatientHomeScreen] Calling loadPatientAppointments...');
-      appointmentController.loadPatientAppointments().catchError((e) {
-        print('❌ [PatientHomeScreen] Error loading appointments: $e');
-      });
-      // تحميل معلومات الطبيب (يتم بشكل مستقل)
-      patientController.loadMyDoctor().catchError((e) {
-        print('❌ [PatientHomeScreen] Error loading doctor: $e');
-        // لا نعرض snackbar لأن هذا ليس خطأ حرج
-      });
-    });
 
     return Scaffold(
       body: SafeArea(
@@ -181,21 +212,88 @@ class PatientHomeScreen extends StatelessWidget {
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16.r),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16.r),
-                                gradient: LinearGradient(
-                                  colors: [
-                                    AppColors.primary,
-                                    AppColors.secondary,
-                                  ],
-                                ),
-                              ),
-                              child: Icon(
-                                Icons.person,
-                                color: AppColors.white,
-                                size: 30.sp,
-                              ),
+                            child: Builder(
+                              builder: (context) {
+                                final doctorImageUrl = doctor?['imageUrl'];
+                                final validImageUrl =
+                                    ImageUtils.convertToValidUrl(
+                                      doctorImageUrl,
+                                    );
+
+                                if (validImageUrl != null &&
+                                    ImageUtils.isValidImageUrl(validImageUrl)) {
+                                  return CachedNetworkImage(
+                                    imageUrl: validImageUrl,
+                                    width: 80.w,
+                                    height: 85.h,
+                                    fit: BoxFit.cover,
+                                    fadeInDuration: Duration.zero,
+                                    fadeOutDuration: Duration.zero,
+                                    memCacheWidth: 160,
+                                    memCacheHeight: 170,
+                                    placeholder: (context, url) => Container(
+                                      width: 80.w,
+                                      height: 85.h,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(
+                                          16.r,
+                                        ),
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            AppColors.primary,
+                                            AppColors.secondary,
+                                          ],
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.person,
+                                        color: AppColors.white,
+                                        size: 30.sp,
+                                      ),
+                                    ),
+                                    errorWidget: (context, url, error) =>
+                                        Container(
+                                          width: 80.w,
+                                          height: 85.h,
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              16.r,
+                                            ),
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                AppColors.primary,
+                                                AppColors.secondary,
+                                              ],
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            Icons.person,
+                                            color: AppColors.white,
+                                            size: 30.sp,
+                                          ),
+                                        ),
+                                  );
+                                } else {
+                                  return Container(
+                                    width: 80.w,
+                                    height: 85.h,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(16.r),
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          AppColors.primary,
+                                          AppColors.secondary,
+                                        ],
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.person,
+                                      color: AppColors.white,
+                                      size: 30.sp,
+                                    ),
+                                  );
+                                }
+                              },
                             ),
                           ),
                         ),
@@ -257,14 +355,20 @@ class PatientHomeScreen extends StatelessWidget {
                               SizedBox(width: 16.w),
                               // Chat Icon with notification dot (على اليسار في RTL - آخر عنصر)
                               GestureDetector(
-                                onTap: () {
+                                onTap: () async {
                                   final profile =
                                       patientController.myProfile.value;
                                   if (profile != null) {
-                                    Get.toNamed(
+                                    await Get.toNamed(
                                       AppRoutes.chat,
                                       arguments: {'patientId': profile.id},
                                     );
+                                    // Reload unread count when returning from chat
+                                    // Add small delay to ensure messages are marked as read
+                                    await Future.delayed(
+                                      const Duration(milliseconds: 300),
+                                    );
+                                    _loadUnreadCount();
                                   }
                                 },
                                 child: Stack(
@@ -274,22 +378,27 @@ class PatientHomeScreen extends StatelessWidget {
                                       width: 24.sp,
                                       height: 24.sp,
                                     ),
-                                    Positioned(
-                                      right: 0,
-                                      top: 0,
-                                      child: Container(
-                                        width: 10.w,
-                                        height: 10.h,
-                                        decoration: BoxDecoration(
-                                          color: Colors.pink,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: AppColors.white,
-                                            width: 1.5,
+                                    Obx(() {
+                                      if (_unreadCount.value > 0) {
+                                        return Positioned(
+                                          right: 0,
+                                          top: 0,
+                                          child: Container(
+                                            width: 10.w,
+                                            height: 10.h,
+                                            decoration: BoxDecoration(
+                                              color: Colors.red,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: AppColors.white,
+                                                width: 1.5,
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                    ),
+                                        );
+                                      }
+                                      return const SizedBox.shrink();
+                                    }),
                                   ],
                                 ),
                               ),
@@ -554,69 +663,8 @@ class PatientHomeScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              // Doctor Image (on the right in RTL)
-              Builder(
-                builder: (context) {
-                  final doctorImageUrl =
-                      patientController.myDoctor.value?['imageUrl'];
-                  return Container(
-                    width: 40.w,
-                    height: 40.w,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        width: 2,
-                      ),
-                    ),
-                    child: ClipOval(
-                      child:
-                          doctorImageUrl != null &&
-                              ImageUtils.isValidImageUrl(doctorImageUrl)
-                          ? CachedNetworkImage(
-                              imageUrl:
-                                  ImageUtils.convertToValidUrl(
-                                    doctorImageUrl,
-                                  ) ??
-                                  '',
-                              fit: BoxFit.cover,
-                              progressIndicatorBuilder:
-                                  (context, url, progress) => Container(
-                                    color: AppColors.divider,
-                                    child: Center(
-                                      child: CircularProgressIndicator(
-                                        value: progress.progress,
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              AppColors.primary,
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                              errorWidget: (context, url, error) => Container(
-                                color: AppColors.divider,
-                                child: Icon(
-                                  Icons.person,
-                                  color: AppColors.textSecondary,
-                                  size: 30.sp,
-                                ),
-                              ),
-                            )
-                          : Container(
-                              color: AppColors.divider,
-                              child: Icon(
-                                Icons.person,
-                                color: AppColors.textSecondary,
-                                size: 30.sp,
-                              ),
-                            ),
-                    ),
-                  );
-                },
-              ),
-              SizedBox(width: 12.w),
-
+              // Spacing where image was (to prevent text from sticking to edge)
+              SizedBox(width: 52.w),
               // Line 1: Doctor name text
               RichText(
                 text: TextSpan(

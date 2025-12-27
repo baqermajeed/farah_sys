@@ -7,6 +7,7 @@ import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ReceptionHomeScreen extends StatefulWidget {
   const ReceptionHomeScreen({super.key});
@@ -326,47 +327,81 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16.r),
-                      child:
-                          (patient.imageUrl != null &&
-                              ImageUtils.isValidImageUrl(patient.imageUrl))
-                          ? Image.network(
-                              patient.imageUrl!,
+                      child: Builder(
+                        builder: (context) {
+                          final imageUrl = patient.imageUrl;
+                          final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+                          
+                          if (validImageUrl != null &&
+                              ImageUtils.isValidImageUrl(validImageUrl)) {
+                            return CachedNetworkImage(
+                              imageUrl: validImageUrl,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16.r),
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        AppColors.primary,
-                                        AppColors.secondary,
-                                      ],
-                                    ),
+                              width: 80.w,
+                              height: 85.h,
+                              fadeInDuration: Duration.zero,
+                              fadeOutDuration: Duration.zero,
+                              memCacheWidth: 160,
+                              memCacheHeight: 170,
+                              placeholder: (context, url) => Container(
+                                width: 80.w,
+                                height: 85.h,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16.r),
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      AppColors.primary,
+                                      AppColors.secondary,
+                                    ],
                                   ),
-                                  child: Icon(
-                                    Icons.person,
-                                    color: AppColors.white,
-                                    size: 30.sp,
-                                  ),
-                                );
-                              },
-                            )
-                          : Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16.r),
-                                gradient: LinearGradient(
-                                  colors: [
-                                    AppColors.primary,
-                                    AppColors.secondary,
-                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.person,
+                                  color: AppColors.white,
+                                  size: 30.sp,
                                 ),
                               ),
-                              child: Icon(
-                                Icons.person,
-                                color: AppColors.white,
-                                size: 30.sp,
+                              errorWidget: (context, url, error) => Container(
+                                width: 80.w,
+                                height: 85.h,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16.r),
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      AppColors.primary,
+                                      AppColors.secondary,
+                                    ],
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.person,
+                                  color: AppColors.white,
+                                  size: 30.sp,
+                                ),
+                              ),
+                            );
+                          }
+                          
+                          return Container(
+                            width: 80.w,
+                            height: 85.h,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16.r),
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.primary,
+                                  AppColors.secondary,
+                                ],
                               ),
                             ),
+                            child: Icon(
+                              Icons.person,
+                              color: AppColors.white,
+                              size: 30.sp,
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),

@@ -15,14 +15,14 @@ class ChatController extends GetxController {
   String? currentPatientId;
   String? currentRoomId;
   
-  // Track temporary message IDs to replace them with server messages
-  final Set<String> _tempMessageIds = {};
+  // Track message IDs that are being sent (to show loading indicator)
+  final RxList<String> sendingMessageIds = <String>[].obs;
   bool _isConnecting = false;
 
   @override
   void onClose() {
-    // Clear temporary messages
-    _tempMessageIds.clear();
+    // Clear sending message IDs
+    sendingMessageIds.clear();
     // Remove event listeners
     final socketService = _chatService.socketService;
     socketService.off('message_received');
@@ -52,11 +52,33 @@ class ChatController extends GetxController {
 
       print('✅ [ChatController] Loaded ${messagesList.length} messages');
       
-      // Clear temporary messages when loading fresh messages
-      _tempMessageIds.clear();
+      // Clear sending message IDs when loading fresh messages
+      sendingMessageIds.clear();
       
       messages.value = messagesList;
       messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      
+      // Mark all unread messages as read when opening the chat
+      final currentUser = _authController.currentUser.value;
+      if (currentUser != null) {
+        final unreadMessages = messagesList.where((m) => 
+          !m.isRead && m.senderId != currentUser.id
+        ).toList();
+        
+        if (unreadMessages.isNotEmpty) {
+          print('📖 [ChatController] Marking ${unreadMessages.length} messages as read');
+          // Mark all unread messages as read (do this in background to not block UI)
+          Future.microtask(() async {
+            for (final message in unreadMessages) {
+              try {
+                await markAsRead(message.id);
+              } catch (e) {
+                print('⚠️ [ChatController] Error marking message ${message.id} as read: $e');
+              }
+            }
+          });
+        }
+      }
     } on ApiException catch (e) {
       print('❌ [ChatController] API Error: ${e.message}');
       Get.snackbar('خطأ', e.message);
@@ -98,19 +120,29 @@ class ChatController extends GetxController {
       };
       
       // Connect to Socket.IO
+      print('🔌 [ChatController] Attempting to connect to Socket.IO...');
+      print('🔌 [ChatController] Current patientId: $patientId');
       final connected = await socketService.connect();
       print('🔌 [ChatController] Socket connection result: $connected');
+      print('🔌 [ChatController] Socket isConnected: ${socketService.isConnected}');
       
       if (!connected) {
-        print('⚠️ [ChatController] Socket connection failed, will retry...');
-        _isConnecting = false;
-        // Retry after delay
-        Future.delayed(const Duration(seconds: 2), () {
-          if (currentPatientId == patientId && !_isConnecting) {
-            connectSocket(patientId);
-          }
-        });
-        return;
+        print('⚠️ [ChatController] Socket connection failed');
+        print('⚠️ [ChatController] Attempting one more time...');
+        // Try one more time with a delay
+        await Future.delayed(const Duration(milliseconds: 1000));
+        final retryConnected = await socketService.connect();
+        print('🔌 [ChatController] Retry connection result: $retryConnected');
+        
+        if (!retryConnected) {
+          _isConnecting = false;
+          Get.snackbar(
+            'تحذير',
+            'فشل الاتصال بالدردشة. تأكد من اتصال الإنترنت وحاول مرة أخرى',
+            duration: const Duration(seconds: 3),
+          );
+          return;
+        }
       }
       
       // Join conversation
@@ -126,6 +158,45 @@ class ChatController extends GetxController {
           
           print('📩 [ChatController] Parsed message: id=${message.id}, imageUrl=${message.imageUrl}, content=${message.message}');
           
+          // Check if message already exists by ID (might have been added by message_sent)
+          final existingIndex = messages.indexWhere((m) => m.id == message.id);
+          if (existingIndex >= 0) {
+            // Message already exists, just update it and remove from sending list
+            print('🔄 [ChatController] Message already exists, updating at index $existingIndex');
+            sendingMessageIds.remove(message.id);
+            messages[existingIndex] = message;
+            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            return;
+          }
+          
+          // Check if this is a message we sent (to avoid duplicates)
+          final currentUser = _authController.currentUser.value;
+          final isFromCurrentUser = currentUser != null && message.senderId == currentUser.id;
+          
+          if (isFromCurrentUser) {
+            // This is our own message - check if we have a temp message to replace
+            final tempIndex = messages.indexWhere((m) => 
+              sendingMessageIds.contains(m.id) &&
+              m.message == message.message &&
+              m.senderId == message.senderId &&
+              (m.timestamp.difference(message.timestamp).inSeconds.abs() < 10)
+            );
+            
+            if (tempIndex >= 0) {
+              // Replace temp message with server message
+              print('🔄 [ChatController] Replacing temp message at index $tempIndex with server message');
+              sendingMessageIds.remove(messages[tempIndex].id);
+              messages[tempIndex] = message;
+              messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+              return; // Don't add again
+            }
+            // If no temp message found, message_sent will handle it
+            // Don't add it here to avoid duplicates
+            print('⚠️ [ChatController] Own message received but no temp message found, waiting for message_sent');
+            return;
+          }
+          
+          // For messages from others, add/update normally
           _addOrUpdateMessage(message);
         } catch (e) {
           print('❌ [ChatController] Error parsing message: $e');
@@ -140,10 +211,39 @@ class ChatController extends GetxController {
           final messageData = data['message'] as Map<String, dynamic>? ?? data;
           final message = MessageModel.fromJson(messageData);
           
-          print('✅ [ChatController] Replacing temp message with server message: id=${message.id}');
+          print('✅ [ChatController] Message sent successfully: id=${message.id}');
           
-          // Replace temporary message with server message
-          _addOrUpdateMessage(message, removeTemp: true);
+          // Check if message already exists (might have been added by message_received)
+          final existingIndex = messages.indexWhere((m) => m.id == message.id);
+          if (existingIndex >= 0) {
+            // Message already exists, just remove from sending list and update
+            print('🔄 [ChatController] Message already exists, updating and removing from sending list');
+            sendingMessageIds.remove(message.id);
+            messages[existingIndex] = message;
+            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            return;
+          }
+          
+          // Find and replace temporary message with server message
+          final tempIndex = messages.indexWhere((m) => 
+            sendingMessageIds.contains(m.id) &&
+            m.message == message.message &&
+            m.senderId == message.senderId &&
+            (m.timestamp.difference(message.timestamp).inSeconds.abs() < 10)
+          );
+          
+          if (tempIndex >= 0) {
+            // Remove temp ID and replace message
+            print('🔄 [ChatController] Replacing temp message at index $tempIndex');
+            sendingMessageIds.remove(messages[tempIndex].id);
+            messages[tempIndex] = message;
+            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          } else {
+            // If no matching temp found, just remove from sending list and add/update the message
+            print('➕ [ChatController] No temp message found, adding server message');
+            sendingMessageIds.remove(message.id);
+            _addOrUpdateMessage(message);
+          }
         } catch (e) {
           print('❌ [ChatController] Error parsing sent message: $e');
           print('❌ [ChatController] Data: $data');
@@ -171,9 +271,9 @@ class ChatController extends GetxController {
     }
   }
   
-  // Helper method to add or update message, removing temporary messages
-  void _addOrUpdateMessage(MessageModel message, {bool removeTemp = false}) {
-    // First, check if message already exists by ID (most reliable)
+  // Helper method to add or update message
+  void _addOrUpdateMessage(MessageModel message) {
+    // Check if message already exists by ID
     final existingIndex = messages.indexWhere((m) => m.id == message.id);
     
     if (existingIndex >= 0) {
@@ -184,42 +284,9 @@ class ChatController extends GetxController {
       return;
     }
     
-    // Remove temporary messages if this is a server message
-    if (removeTemp && _tempMessageIds.isNotEmpty) {
-      final removedCount = messages.length;
-      // Find and remove matching temporary message by content and timestamp
-      final tempIndex = messages.indexWhere((m) => 
-        _tempMessageIds.contains(m.id) && 
-        m.message == message.message &&
-        m.senderId == message.senderId &&
-        (m.timestamp.difference(message.timestamp).inSeconds.abs() < 10)
-      );
-      
-      if (tempIndex >= 0) {
-        print('🔄 [ChatController] Found matching temp message at index $tempIndex, replacing...');
-        _tempMessageIds.remove(messages[tempIndex].id);
-        messages[tempIndex] = message;
-        messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-        return;
-      }
-      
-      // If no matching temp found, remove all temp messages
-      messages.removeWhere((m) => _tempMessageIds.contains(m.id));
-      final afterRemovedCount = messages.length;
-      print('🗑️ [ChatController] Removed ${removedCount - afterRemovedCount} temporary messages');
-      _tempMessageIds.clear();
-    }
-    
-    // Check again if message exists (might have been added by another handler)
-    final finalIndex = messages.indexWhere((m) => m.id == message.id);
-    if (finalIndex >= 0) {
-      print('🔄 [ChatController] Message already exists after cleanup, updating at index $finalIndex');
-      messages[finalIndex] = message;
-    } else {
-      // Add new message
-      print('➕ [ChatController] Adding new message: id=${message.id}, content=${message.message}');
-      messages.add(message);
-    }
+    // Add new message
+    print('➕ [ChatController] Adding new message: id=${message.id}, content=${message.message}');
+    messages.add(message);
     messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
   }
 
@@ -236,27 +303,44 @@ class ChatController extends GetxController {
       
       // Ensure socket is connected
       if (!_chatService.socketService.isConnected) {
-        await connectSocket(currentPatientId!);
-        // Wait a bit for connection to stabilize
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (!_chatService.socketService.isConnected) {
-          throw ApiException('فشل الاتصال بالدردشة');
+        print('⚠️ [ChatController] Socket not connected, attempting to connect...');
+        try {
+          await connectSocket(currentPatientId!);
+          // Wait a bit more for connection to stabilize
+          await Future.delayed(const Duration(milliseconds: 1500)); // Increased delay
+          if (!_chatService.socketService.isConnected) {
+            print('❌ [ChatController] Socket connection failed after retry');
+            // Try one more time
+            print('🔄 [ChatController] Attempting final connection retry...');
+            await connectSocket(currentPatientId!);
+            await Future.delayed(const Duration(milliseconds: 1500));
+            if (!_chatService.socketService.isConnected) {
+              throw ApiException('فشل الاتصال بالدردشة. تأكد من اتصال الإنترنت وحاول مرة أخرى');
+            }
+          }
+        } catch (e) {
+          if (e is ApiException) {
+            rethrow;
+          }
+          print('❌ [ChatController] Error connecting socket: $e');
+          throw ApiException('فشل الاتصال بالدردشة. تأكد من اتصال الإنترنت وحاول مرة أخرى');
         }
       }
       
-      // Add temporary message (will be replaced by server response)
+      // Create a temporary message to show with loading indicator
       final currentUser = _authController.currentUser.value;
-      final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}_${messages.length}';
+      final tempId = 'sending_${DateTime.now().millisecondsSinceEpoch}';
       final tempMessage = MessageModel(
         id: tempId,
         senderId: currentUser?.id ?? '',
         receiverId: '',
         message: content,
-        timestamp: DateTime.now(),
+        timestamp: DateTime.now().toLocal(),
         isRead: false,
       );
       
-      _tempMessageIds.add(tempId);
+      // Add to sending list and add message to show loading indicator
+      sendingMessageIds.add(tempId);
       messages.add(tempMessage);
       messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
       
@@ -268,12 +352,12 @@ class ChatController extends GetxController {
       
       print('📤 [ChatController] Sent message: $content (tempId: $tempId)');
       
-      // Remove temporary message after timeout if not replaced (fallback)
+      // Remove from sending list and message after timeout if not confirmed (fallback)
       Future.delayed(const Duration(seconds: 10), () {
-        if (_tempMessageIds.contains(tempId)) {
-          print('⚠️ [ChatController] Temp message not replaced, removing: $tempId');
+        if (sendingMessageIds.contains(tempId)) {
+          print('⚠️ [ChatController] Message not confirmed, removing: $tempId');
+          sendingMessageIds.remove(tempId);
           messages.removeWhere((m) => m.id == tempId);
-          _tempMessageIds.remove(tempId);
         }
       });
     } on ApiException catch (e) {
@@ -294,6 +378,25 @@ class ChatController extends GetxController {
         throw ApiException('لا يوجد مريض محدد');
       }
       
+      // Create a temporary message to show with loading indicator
+      final currentUser = _authController.currentUser.value;
+      final tempId = 'sending_image_${DateTime.now().millisecondsSinceEpoch}';
+      final tempMessage = MessageModel(
+        id: tempId,
+        senderId: currentUser?.id ?? '',
+        receiverId: '',
+        message: content ?? '',
+        timestamp: DateTime.now(),
+        isRead: false,
+        imageUrl: image.path, // Show local image path temporarily
+      );
+      
+      // Add to sending list and add message to show loading indicator
+      if (!sendingMessageIds.contains(tempId)) {
+        sendingMessageIds.add(tempId);
+      }
+      messages.add(tempMessage);
+      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
       isLoading.value = true;
       
       // Upload image and send message via REST API
@@ -304,12 +407,21 @@ class ChatController extends GetxController {
         image: image,
       );
       
-      // Add message to list (will also be updated via Socket.IO)
-      // Check if message already exists (from Socket.IO)
-      final exists = messages.any((m) => m.id == message.id);
-      if (!exists) {
-        messages.add(message);
+      // Find and replace temporary message with server message
+      final tempIndex = messages.indexWhere((m) => m.id == tempId);
+      if (tempIndex >= 0) {
+        sendingMessageIds.remove(tempId);
+        messages[tempIndex] = message;
         messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      } else {
+        // If temp message was already replaced by Socket.IO, just remove from sending list
+        sendingMessageIds.remove(tempId);
+        // Check if message already exists (from Socket.IO)
+        final exists = messages.any((m) => m.id == message.id);
+        if (!exists) {
+          messages.add(message);
+          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        }
       }
       
       print('✅ [ChatController] Image message sent: ${message.id}, imageUrl: ${message.imageUrl}');

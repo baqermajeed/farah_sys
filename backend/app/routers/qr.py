@@ -31,5 +31,6 @@ async def scan(code: str, current=Depends(require_roles([Role.ADMIN, Role.DOCTOR
             doctor_ids=[str(did) for did in patient.doctor_ids],
             qr_code_data=patient.qr_code_data,
             qr_image_path=patient.qr_image_path,
+            imageUrl=u.imageUrl,
         )
     }

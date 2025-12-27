@@ -36,8 +36,12 @@ class SocketService {
       print('🔄 SocketService: Connecting to Socket.IO server...');
 
       // Connect to socket.io
+      // Socket.IO client automatically adds /socket.io to the URL
+      final socketUrl = ApiConstants.baseUrl;
+      print('🔌 SocketService: Connecting to: $socketUrl');
+      
       _socket = IO.io(
-        ApiConstants.baseUrl,
+        socketUrl,
         IO.OptionBuilder()
             .setTransports(['websocket', 'polling'])
             .setAuth({'token': token})
@@ -53,8 +57,24 @@ class SocketService {
 
       _setupEventHandlers();
 
-      // Wait for connection
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Wait for connection with timeout
+      int attempts = 0;
+      const maxAttempts = 40; // 20 seconds total (40 * 500ms) - increased for slower connections
+      while (!_isConnected && attempts < maxAttempts && _isConnecting) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        attempts++;
+        if (attempts % 10 == 0) {
+          print('🔄 SocketService: Still connecting... (attempt $attempts/$maxAttempts)');
+        }
+      }
+
+      if (!_isConnected) {
+        print('⚠️ SocketService: Connection timeout after ${attempts * 500}ms');
+        print('⚠️ SocketService: Socket state: ${_socket?.connected}');
+        _isConnecting = false;
+      } else {
+        print('✅ SocketService: Successfully connected after ${attempts * 500}ms');
+      }
 
       return _isConnected;
     } catch (e) {
@@ -70,6 +90,13 @@ class SocketService {
 
     _socket!.onConnect((_) {
       print('✅ SocketService: Connected to Socket.IO server');
+      _isConnected = true;
+      _isConnecting = false;
+      onConnectionStatusChanged?.call(true);
+    });
+    
+    _socket!.on('connect', (_) {
+      print('✅ SocketService: Socket connected event received');
       _isConnected = true;
       _isConnecting = false;
       onConnectionStatusChanged?.call(true);

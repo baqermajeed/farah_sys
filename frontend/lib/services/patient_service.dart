@@ -268,6 +268,7 @@ class PatientService {
           'id': data['id'] ?? '',
           'name': data['name'] ?? '',
           'phone': data['phone'] ?? '',
+          'imageUrl': data['imageUrl'] ?? data['image_url'],
         };
       } else {
         throw ApiException('فشل جلب معلومات الطبيب');
@@ -305,7 +306,7 @@ class PatientService {
       gender: json['gender'] ?? '',
       age: json['age'] ?? 0,
       city: json['city'] ?? '',
-      imageUrl: json['qr_image_path'],
+      imageUrl: json['imageUrl'] ?? json['image_url'],
       doctorIds: doctorIds,
       treatmentHistory: json['treatment_type'] != null
           ? [json['treatment_type']]

@@ -84,6 +84,7 @@ async def add_patient(
         doctor_ids=[str(did) for did in patient.doctor_ids],
         qr_code_data=patient.qr_code_data,
         qr_image_path=patient.qr_image_path,
+        imageUrl=u.imageUrl,
     )
         else:
             raise HTTPException(status_code=400, detail="User exists but is not a patient")
@@ -131,6 +132,7 @@ async def add_patient(
         doctor_ids=[str(did) for did in patient.doctor_ids],
         qr_code_data=patient.qr_code_data,
         qr_image_path=patient.qr_image_path,
+        imageUrl=u.imageUrl,
     )
 
 @router.get("/patients", response_model=List[PatientOut])
@@ -162,6 +164,7 @@ async def my_patients(
             age=u.age, city=u.city, treatment_type=p.treatment_type,
             doctor_ids=[str(did) for did in p.doctor_ids],
             qr_code_data=p.qr_code_data, qr_image_path=p.qr_image_path,
+            imageUrl=u.imageUrl,
         ))
     return out
 
@@ -182,6 +185,7 @@ async def set_treatment(patient_id: str, treatment_type: str = Query(...), curre
         id=str(p.id), user_id=str(p.user_id), name=u.name, phone=u.phone, gender=u.gender, age=u.age, city=u.city,
         treatment_type=p.treatment_type, doctor_ids=[str(did) for did in p.doctor_ids],
         qr_code_data=p.qr_code_data, qr_image_path=p.qr_image_path,
+        imageUrl=u.imageUrl,
     )
 
 @router.post("/patients/{patient_id}/notes", response_model=NoteOut)
@@ -496,6 +500,7 @@ async def update_patient(patient_id: int, payload: PatientUpdate, db: AsyncSessi
         doctor_ids=[str(did) for did in p.doctor_ids],
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
+        imageUrl=u.imageUrl,
     )
 
 @router.delete("/patients/{patient_id}", status_code=204)

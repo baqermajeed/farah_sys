@@ -80,6 +80,7 @@ async def create_patient_admin(payload: PatientCreate):
         doctor_ids=[str(did) for did in p.doctor_ids],
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
+        imageUrl=u.imageUrl if u else None,
     )
 
 # تم نقل الإحصائيات إلى /stats router
@@ -123,6 +124,7 @@ async def update_patient_admin(patient_id: str, payload: PatientUpdate):
         doctor_ids=[str(did) for did in p.doctor_ids],
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
+        imageUrl=u.imageUrl,
     )
 
 @router.delete("/patients/{patient_id}", status_code=204)

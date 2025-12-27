@@ -200,6 +200,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                           arguments: {'patientId': patientId},
                                         );
                                         // Reload unread count when returning from chat
+                                        // Add small delay to ensure messages are marked as read
+                                        await Future.delayed(const Duration(milliseconds: 300));
                                         _loadUnreadCount();
                                       }
                                     },
@@ -318,16 +320,10 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                       width: 105.w,
                                       height: 150.h,
                                       decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.only(
-                                          topLeft: Radius.circular(16.r),
-                                          bottomLeft: Radius.circular(16.r),
-                                        ),
+                                        borderRadius: BorderRadius.circular(16.r),
                                       ),
                                       child: ClipRRect(
-                                        borderRadius: BorderRadius.only(
-                                          topLeft: Radius.circular(16.r),
-                                          bottomLeft: Radius.circular(16.r),
-                                        ),
+                                        borderRadius: BorderRadius.circular(16.r),
                                         child: _buildPatientImage(patient),
                                       ),
                                     ),
@@ -3433,17 +3429,21 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
   }
 
   Widget _buildPatientImage(dynamic patient) {
-    // Check if imageUrl is valid (starts with http:// or https://)
-    // Reject invalid schemes like 'r2-disabled://'
+    // Check if imageUrl is valid and convert to valid URL
     final imageUrl = patient.imageUrl;
+    final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
 
-    if (ImageUtils.isValidImageUrl(imageUrl)) {
+    if (validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)) {
       return CachedNetworkImage(
-        imageUrl: imageUrl!,
+        imageUrl: validImageUrl,
         fit: BoxFit.cover,
+        fadeInDuration: Duration.zero,
+        fadeOutDuration: Duration.zero,
         placeholder: (context, url) =>
             Skeletonizer(enabled: true, child: _buildDefaultPatientImage()),
         errorWidget: (context, url, error) => _buildDefaultPatientImage(),
+        memCacheWidth: 200,
+        memCacheHeight: 200,
       );
     } else {
       return _buildDefaultPatientImage();
@@ -4901,16 +4901,10 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                           width: 80.w,
                           height: 80.w,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(16.r),
-                              bottomLeft: Radius.circular(16.r),
-                            ),
+                            borderRadius: BorderRadius.circular(16.r),
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(16.r),
-                              bottomLeft: Radius.circular(16.r),
-                            ),
+                            borderRadius: BorderRadius.circular(16.r),
                             child: _buildDoctorImage(doctor, doctorInitials),
                           ),
                         ),

@@ -66,6 +66,7 @@ class PatientOut(BaseModel):
     doctor_ids: List[str] = []  # قائمة معرفات الأطباء المرتبطين
     qr_code_data: str
     qr_image_path: Optional[str] = None
+    imageUrl: Optional[str] = None
 
     class Config:
         from_attributes = True

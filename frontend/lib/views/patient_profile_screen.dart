@@ -8,20 +8,35 @@ import 'package:farah_sys_final/core/widgets/custom_button.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/utils/image_utils.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
-class PatientProfileScreen extends StatelessWidget {
+class PatientProfileScreen extends StatefulWidget {
   const PatientProfileScreen({super.key});
+
+  @override
+  State<PatientProfileScreen> createState() => _PatientProfileScreenState();
+}
+
+class _PatientProfileScreenState extends State<PatientProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  void _loadData() {
+    final patientController = Get.find<PatientController>();
+
+    // تحميل الملف الشخصي فقط بدون أي إعادة توجيه
+    patientController.loadMyProfile();
+  }
 
   @override
   Widget build(BuildContext context) {
     final authController = Get.find<AuthController>();
     final patientController = Get.find<PatientController>();
-    
-    // Load profile on first build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      patientController.loadMyProfile();
-    });
-    
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -62,8 +77,10 @@ class PatientProfileScreen extends StatelessWidget {
                       onTap: () {
                         final user = authController.currentUser.value;
                         final profile = patientController.myProfile.value;
-                        final patientId = user?.id ?? profile?.id ?? 'demo_patient_1';
-                        final patientName = user?.name ?? profile?.name ?? 'مريض';
+                        final patientId =
+                            user?.id ?? profile?.id ?? 'demo_patient_1';
+                        final patientName =
+                            user?.name ?? profile?.name ?? 'مريض';
                         Get.toNamed(
                           AppRoutes.qrCode,
                           arguments: {
@@ -89,28 +106,63 @@ class PatientProfileScreen extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 24.h),
-              CircleAvatar(
-                radius: 60.r,
-                backgroundColor: AppColors.primaryLight,
-                child: Icon(
-                  Icons.person,
-                  size: 60.sp,
-                  color: AppColors.white,
-                ),
-              ),
+              // Profile Image
+              Obx(() {
+                final user = authController.currentUser.value;
+                final imageUrl = user?.imageUrl;
+                final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+
+                if (validImageUrl != null &&
+                    ImageUtils.isValidImageUrl(validImageUrl)) {
+                  return CircleAvatar(
+                    radius: 60.r,
+                    backgroundColor: AppColors.primaryLight,
+                    child: ClipOval(
+                      child: CachedNetworkImage(
+                        imageUrl: validImageUrl,
+                        fit: BoxFit.cover,
+                        width: 120.w,
+                        height: 120.w,
+                        fadeInDuration: Duration.zero,
+                        fadeOutDuration: Duration.zero,
+                        placeholder: (context, url) =>
+                            Container(color: AppColors.primaryLight),
+                        errorWidget: (context, url, error) => Icon(
+                          Icons.person,
+                          size: 60.sp,
+                          color: AppColors.white,
+                        ),
+                        memCacheWidth: 240,
+                        memCacheHeight: 240,
+                      ),
+                    ),
+                  );
+                }
+
+                return CircleAvatar(
+                  radius: 60.r,
+                  backgroundColor: AppColors.primaryLight,
+                  child: Icon(
+                    Icons.person,
+                    size: 60.sp,
+                    color: AppColors.white,
+                  ),
+                );
+              }),
               SizedBox(height: 32.h),
               Obx(() {
-                if (patientController.isLoading.value && patientController.myProfile.value == null) {
+                if (patientController.isLoading.value &&
+                    patientController.myProfile.value == null) {
                   return const LoadingWidget(message: 'جاري تحميل البيانات...');
                 }
-                
+
                 final profile = patientController.myProfile.value;
                 final user = authController.currentUser.value;
-                
+
                 return Padding(
                   padding: EdgeInsets.symmetric(horizontal: 24.w),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         AppStrings.name,
@@ -161,7 +213,9 @@ class PatientProfileScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16.r),
                         ),
                         child: Text(
-                          user?.phoneNumber ?? profile?.phoneNumber ?? 'غير محدد',
+                          user?.phoneNumber ??
+                              profile?.phoneNumber ??
+                              'غير محدد',
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             fontSize: 14.sp,
@@ -225,7 +279,9 @@ class PatientProfileScreen extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(16.r),
                                   ),
                                   child: Text(
-                                    profile?.gender ?? user?.gender ?? 'غير محدد',
+                                    profile?.gender ??
+                                        user?.gender ??
+                                        'غير محدد',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       fontSize: 14.sp,
@@ -277,8 +333,10 @@ class PatientProfileScreen extends StatelessWidget {
                       SizedBox(height: 32.h),
                       CustomButton(
                         text: 'تعديل الملف الشخصي',
-                        onPressed: () {
-                          Get.toNamed(AppRoutes.editPatientProfile);
+                        onPressed: () async {
+                          await Get.toNamed(AppRoutes.editPatientProfile);
+                          // إعادة تحميل البيانات عند العودة من صفحة التعديل
+                          _loadData();
                         },
                         backgroundColor: AppColors.primary,
                         width: double.infinity,

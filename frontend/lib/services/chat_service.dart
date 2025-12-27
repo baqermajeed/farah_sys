@@ -114,6 +114,45 @@ class ChatService {
     }
   }
 
+  // إرسال رسالة نصية عبر REST API (fallback when Socket.IO fails)
+  Future<MessageModel> sendTextMessage({
+    required String patientId,
+    required String content,
+  }) async {
+    try {
+      final token = await _api.getToken();
+      if (token == null) {
+        throw ApiException('غير مصرح به');
+      }
+
+      final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.chatSendMessage(patientId)}');
+      
+      final request = http.MultipartRequest('POST', uri);
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+      });
+
+      if (content.isNotEmpty) {
+        request.fields['content'] = content;
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = json.decode(response.body);
+        return MessageModel.fromJson(data);
+      } else {
+        throw ApiException('فشل إرسال الرسالة: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل إرسال الرسالة: ${e.toString()}');
+    }
+  }
+
   // تعليم رسالة كمقروءة
   Future<void> markAsRead({
     required String patientId,

@@ -105,15 +105,36 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
               String timeText = '';
               if (chatItem['last_message_time'] != null) {
                 try {
+                  // Parse UTC time and convert to local
                   final dateTime = DateTime.parse(
                     chatItem['last_message_time'],
-                  );
+                  ).toLocal();
                   final now = DateTime.now();
                   final difference = now.difference(dateTime);
 
                   if (difference.inDays == 0) {
-                    // Today - show time
-                    timeText = DateFormat('h:mm a', 'ar').format(dateTime);
+                    // Today - show time in 12-hour format
+                    final hour = dateTime.hour;
+                    final minute = dateTime.minute.toString().padLeft(2, '0');
+
+                    String period;
+                    int displayHour;
+
+                    if (hour == 0) {
+                      displayHour = 12;
+                      period = 'ص';
+                    } else if (hour < 12) {
+                      displayHour = hour;
+                      period = 'ص';
+                    } else if (hour == 12) {
+                      displayHour = 12;
+                      period = 'م';
+                    } else {
+                      displayHour = hour - 12;
+                      period = 'م';
+                    }
+
+                    timeText = '$displayHour:$minute $period';
                   } else if (difference.inDays == 1) {
                     timeText = 'أمس';
                   } else if (difference.inDays < 7) {
@@ -128,11 +149,15 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
 
               return InkWell(
                 borderRadius: BorderRadius.circular(16.r),
-                onTap: () {
-                  Get.toNamed(
+                onTap: () async {
+                  await Get.toNamed(
                     AppRoutes.chat,
                     arguments: {'patientId': chatItem['patient_id']},
                   );
+                  // Reload chat list when returning from chat
+                  // Add small delay to ensure messages are marked as read
+                  await Future.delayed(const Duration(milliseconds: 300));
+                  _loadChatList();
                 },
                 child: Container(
                   padding: EdgeInsets.symmetric(vertical: 14.h),
@@ -140,25 +165,68 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       // image at the right (في RTL)
-                      CircleAvatar(
-                        radius: 28.r,
-                        backgroundColor: Colors.white,
-                        child: ClipOval(
-                          child:
-                              (userImageUrl != null &&
-                                  userImageUrl.isNotEmpty &&
-                                  ImageUtils.isValidImageUrl(userImageUrl))
-                              ? ClipOval(
-                                  child: CachedNetworkImage(
-                                    imageUrl:
-                                        ImageUtils.convertToValidUrl(
-                                          userImageUrl,
-                                        ) ??
-                                        userImageUrl,
-                                    width: 56.w,
-                                    height: 56.w,
-                                    fit: BoxFit.cover,
-                                    placeholder: (context, url) => Container(
+                      Builder(
+                        builder: (context) {
+                          final validImageUrl = ImageUtils.convertToValidUrl(
+                            userImageUrl,
+                          );
+                          final hasImage =
+                              validImageUrl != null &&
+                              ImageUtils.isValidImageUrl(validImageUrl);
+
+                          return CircleAvatar(
+                            radius: 28.r,
+                            backgroundColor: Colors.white,
+                            child: ClipOval(
+                              child: hasImage
+                                  ? CachedNetworkImage(
+                                      imageUrl: validImageUrl,
+                                      width: 56.w,
+                                      height: 56.w,
+                                      fit: BoxFit.cover,
+                                      fadeInDuration: Duration.zero,
+                                      fadeOutDuration: Duration.zero,
+                                      memCacheWidth: 112,
+                                      memCacheHeight: 112,
+                                      placeholder: (context, url) => Container(
+                                        width: 56.w,
+                                        height: 56.w,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              AppColors.primary,
+                                              AppColors.secondary,
+                                            ],
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.person,
+                                          color: AppColors.white,
+                                          size: 28.sp,
+                                        ),
+                                      ),
+                                      errorWidget: (context, url, error) =>
+                                          Container(
+                                            width: 56.w,
+                                            height: 56.w,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  AppColors.primary,
+                                                  AppColors.secondary,
+                                                ],
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              Icons.person,
+                                              color: AppColors.white,
+                                              size: 28.sp,
+                                            ),
+                                          ),
+                                    )
+                                  : Container(
                                       width: 56.w,
                                       height: 56.w,
                                       decoration: BoxDecoration(
@@ -176,46 +244,9 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
                                         size: 28.sp,
                                       ),
                                     ),
-                                    errorWidget: (context, url, error) =>
-                                        Container(
-                                          width: 56.w,
-                                          height: 56.w,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            gradient: LinearGradient(
-                                              colors: [
-                                                AppColors.primary,
-                                                AppColors.secondary,
-                                              ],
-                                            ),
-                                          ),
-                                          child: Icon(
-                                            Icons.person,
-                                            color: AppColors.white,
-                                            size: 28.sp,
-                                          ),
-                                        ),
-                                  ),
-                                )
-                              : Container(
-                                  width: 56.w,
-                                  height: 56.w,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        AppColors.primary,
-                                        AppColors.secondary,
-                                      ],
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    Icons.person,
-                                    color: AppColors.white,
-                                    size: 28.sp,
-                                  ),
-                                ),
-                        ),
+                            ),
+                          );
+                        },
                       ),
                       SizedBox(width: 12.w),
                       // name + last message

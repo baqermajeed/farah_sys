@@ -41,17 +41,27 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (patientId != null) {
         try {
+          print('📱 [ChatScreen] Initializing chat for patient: $patientId');
+          
           // Clear any existing messages first to prevent duplicates
           _chatController.messages.clear();
 
           // Load messages first
+          print('📱 [ChatScreen] Loading messages...');
           await _chatController.loadMessages(patientId: patientId!);
 
           // Wait a bit before connecting socket to ensure messages are loaded
           await Future.delayed(const Duration(milliseconds: 200));
 
           // Then connect to socket
+          print('📱 [ChatScreen] Connecting to socket...');
           await _chatController.connectSocket(patientId!);
+          
+          // Check if connection was successful
+          if (!_chatController.isConnected.value) {
+            print('⚠️ [ChatScreen] Socket connection not established');
+            // Don't show error here, it's already shown in connectSocket
+          }
 
           // Auto-scroll when new messages arrive (only register once)
           if (!_isEverRegistered) {
@@ -82,8 +92,20 @@ class _ChatScreenState extends State<ChatScreen> {
             }
           });
         } catch (e) {
-          print('❌ Error initializing chat: $e');
+          print('❌ [ChatScreen] Error initializing chat: $e');
+          Get.snackbar(
+            'خطأ',
+            'حدث خطأ أثناء تحميل المحادثة: ${e.toString()}',
+            duration: const Duration(seconds: 3),
+          );
         }
+      } else {
+        print('⚠️ [ChatScreen] No patientId provided');
+        Get.snackbar(
+          'خطأ',
+          'لم يتم تحديد المريض',
+          duration: const Duration(seconds: 2),
+        );
       }
     });
   }
@@ -92,6 +114,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    // Reload unread counts when leaving chat screen
+    // This will be handled by the parent screen when it receives focus
     _chatController.disconnect();
     super.dispose();
   }
@@ -199,16 +223,29 @@ class _ChatScreenState extends State<ChatScreen> {
                     final currentUserId =
                         _authController.currentUser.value?.id ?? '';
                     final isSent = message.senderId == currentUserId;
-                    // Format time without locale
-                    final hour = message.timestamp.hour;
-                    final minute = message.timestamp.minute.toString().padLeft(
-                      2,
-                      '0',
-                    );
-                    final period = hour >= 12 ? 'مساءً' : 'صباحاً';
-                    final displayHour = hour > 12
-                        ? hour - 12
-                        : (hour == 0 ? 12 : hour);
+                    // timestamp is already in local time from MessageModel.fromJson
+                    final localTime = message.timestamp;
+                    final hour = localTime.hour;
+                    final minute = localTime.minute.toString().padLeft(2, '0');
+                    
+                    // Format time in 12-hour format
+                    String period;
+                    int displayHour;
+                    
+                    if (hour == 0) {
+                      displayHour = 12;
+                      period = 'صباحاً';
+                    } else if (hour < 12) {
+                      displayHour = hour;
+                      period = 'صباحاً';
+                    } else if (hour == 12) {
+                      displayHour = 12;
+                      period = 'مساءً';
+                    } else {
+                      displayHour = hour - 12;
+                      period = 'مساءً';
+                    }
+                    
                     final time = '$displayHour:$minute $period';
 
                     return _buildMessageBubble(
@@ -445,9 +482,25 @@ class _ChatScreenState extends State<ChatScreen> {
                     color: AppColors.textSecondary,
                   ),
                 ),
-                if (isSent && message.isRead) ...[
+                if (isSent) ...[
                   SizedBox(width: 4.w),
-                  Icon(Icons.done_all, size: 14.sp, color: AppColors.primary),
+                  Obx(() {
+                    final isSending = _chatController.sendingMessageIds.contains(message.id);
+                    if (isSending) {
+                      return SizedBox(
+                        width: 14.w,
+                        height: 14.h,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                        ),
+                      );
+                    } else if (message.isRead) {
+                      return Icon(Icons.done_all, size: 14.sp, color: AppColors.primary);
+                    } else {
+                      return Icon(Icons.done, size: 14.sp, color: AppColors.textSecondary);
+                    }
+                  }),
                 ],
               ],
             ),

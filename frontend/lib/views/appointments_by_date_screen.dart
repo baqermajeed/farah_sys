@@ -247,31 +247,36 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
           Row(
             children: [
               // Patient Image (on the right in RTL)
-              Container(
-                width: 40.w,
-                height: 40.w,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                    width: 2,
-                  ),
-                ),
-                child: ClipOval(
-                  child:
-                      patientImageUrl != null &&
-                          ImageUtils.isValidImageUrl(patientImageUrl)
-                      ? CachedNetworkImage(
-                          imageUrl:
-                              ImageUtils.convertToValidUrl(patientImageUrl) ??
-                              '',
-                          fit: BoxFit.cover,
-                          progressIndicatorBuilder: (context, url, progress) =>
-                              Container(
+              Builder(
+                builder: (context) {
+                  final validImageUrl = ImageUtils.convertToValidUrl(patientImageUrl);
+                  final hasImage = validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl);
+                  
+                  return Container(
+                    width: 40.w,
+                    height: 40.w,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: ClipOval(
+                      child: hasImage
+                          ? CachedNetworkImage(
+                              imageUrl: validImageUrl,
+                              fit: BoxFit.cover,
+                              width: 40.w,
+                              height: 40.w,
+                              fadeInDuration: Duration.zero,
+                              fadeOutDuration: Duration.zero,
+                              memCacheWidth: 80,
+                              memCacheHeight: 80,
+                              placeholder: (context, url) => Container(
                                 color: AppColors.divider,
                                 child: Center(
                                   child: CircularProgressIndicator(
-                                    value: progress.progress,
                                     strokeWidth: 2,
                                     valueColor: AlwaysStoppedAnimation<Color>(
                                       AppColors.primary,
@@ -279,24 +284,26 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
                                   ),
                                 ),
                               ),
-                          errorWidget: (context, url, error) => Container(
-                            color: AppColors.divider,
-                            child: Icon(
-                              Icons.person,
-                              color: AppColors.textSecondary,
-                              size: 30.sp,
+                              errorWidget: (context, url, error) => Container(
+                                color: AppColors.divider,
+                                child: Icon(
+                                  Icons.person,
+                                  color: AppColors.textSecondary,
+                                  size: 20.sp,
+                                ),
+                              ),
+                            )
+                          : Container(
+                              color: AppColors.divider,
+                              child: Icon(
+                                Icons.person,
+                                color: AppColors.textSecondary,
+                                size: 20.sp,
+                              ),
                             ),
-                          ),
-                        )
-                      : Container(
-                          color: AppColors.divider,
-                          child: Icon(
-                            Icons.person,
-                            color: AppColors.textSecondary,
-                            size: 30.sp,
-                          ),
-                        ),
-                ),
+                    ),
+                  );
+                },
               ),
               SizedBox(width: 12.w),
 

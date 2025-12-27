@@ -40,6 +40,7 @@ async def list_patients(
             doctor_ids=[str(did) for did in p.doctor_ids],
             qr_code_data=p.qr_code_data,
             qr_image_path=p.qr_image_path,
+            imageUrl=u.imageUrl if u else None,
         ))
     return out
 

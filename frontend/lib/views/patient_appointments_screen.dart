@@ -10,8 +10,6 @@ import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 class PatientAppointmentsScreen extends StatelessWidget {
   const PatientAppointmentsScreen({super.key});
@@ -196,69 +194,8 @@ class PatientAppointmentsScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              // Doctor Image (on the right in RTL)
-              Builder(
-                builder: (context) {
-                  final doctorImageUrl =
-                      patientController.myDoctor.value?['imageUrl'];
-                  return Container(
-                    width: 40.w,
-                    height: 40.w,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        width: 2,
-                      ),
-                    ),
-                    child: ClipOval(
-                      child:
-                          doctorImageUrl != null &&
-                              ImageUtils.isValidImageUrl(doctorImageUrl)
-                          ? CachedNetworkImage(
-                              imageUrl:
-                                  ImageUtils.convertToValidUrl(
-                                    doctorImageUrl,
-                                  ) ??
-                                  '',
-                              fit: BoxFit.cover,
-                              progressIndicatorBuilder:
-                                  (context, url, progress) => Container(
-                                    color: AppColors.divider,
-                                    child: Center(
-                                      child: CircularProgressIndicator(
-                                        value: progress.progress,
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              AppColors.primary,
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                              errorWidget: (context, url, error) => Container(
-                                color: AppColors.divider,
-                                child: Icon(
-                                  Icons.person,
-                                  color: AppColors.textSecondary,
-                                  size: 30.sp,
-                                ),
-                              ),
-                            )
-                          : Container(
-                              color: AppColors.divider,
-                              child: Icon(
-                                Icons.person,
-                                color: AppColors.textSecondary,
-                                size: 30.sp,
-                              ),
-                            ),
-                    ),
-                  );
-                },
-              ),
-              SizedBox(width: 12.w),
-
+              // Spacing where image was (to prevent text from sticking to edge)
+              SizedBox(width: 52.w),
               // Line 1: Doctor name text
               Expanded(
                 child: RichText(

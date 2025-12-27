@@ -165,6 +165,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                         onTap: () async {
                           await Get.toNamed(AppRoutes.doctorChats);
                           // Reload unread counts when returning from chats screen
+                          // Add small delay to ensure messages are marked as read
+                          await Future.delayed(const Duration(milliseconds: 300));
                           _loadUnreadCounts();
                         },
                         child: Obx(() {
@@ -487,44 +489,78 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12.r),
-                child:
-                    (patient.imageUrl != null &&
-                        ImageUtils.isValidImageUrl(patient.imageUrl))
-                    ? Image.network(
-                        patient.imageUrl!,
+                child: Builder(
+                  builder: (context) {
+                    final imageUrl = patient.imageUrl;
+                    final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+                    
+                    if (validImageUrl != null &&
+                        ImageUtils.isValidImageUrl(validImageUrl)) {
+                      return CachedNetworkImage(
+                        imageUrl: validImageUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12.r),
-                              gradient: LinearGradient(
-                                colors: [
-                                  AppColors.primary,
-                                  AppColors.secondary,
-                                ],
-                              ),
+                        width: 85.w,
+                        height: 90.h,
+                        fadeInDuration: Duration.zero,
+                        fadeOutDuration: Duration.zero,
+                        memCacheWidth: 170,
+                        memCacheHeight: 180,
+                        placeholder: (context, url) => Container(
+                          width: 85.w,
+                          height: 90.h,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12.r),
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.primary,
+                                AppColors.secondary,
+                              ],
                             ),
-                            child: Icon(
-                              Icons.person,
-                              color: AppColors.white,
-                              size: 24.sp,
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12.r),
-                          gradient: LinearGradient(
-                            colors: [AppColors.primary, AppColors.secondary],
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            color: AppColors.white,
+                            size: 24.sp,
                           ),
                         ),
-                        child: Icon(
-                          Icons.person,
-                          color: AppColors.white,
-                          size: 24.sp,
+                        errorWidget: (context, url, error) => Container(
+                          width: 85.w,
+                          height: 90.h,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12.r),
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.primary,
+                                AppColors.secondary,
+                              ],
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            color: AppColors.white,
+                            size: 24.sp,
+                          ),
+                        ),
+                      );
+                    }
+                    
+                    return Container(
+                      width: 85.w,
+                      height: 90.h,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12.r),
+                        gradient: LinearGradient(
+                          colors: [AppColors.primary, AppColors.secondary],
                         ),
                       ),
+                      child: Icon(
+                        Icons.person,
+                        color: AppColors.white,
+                        size: 24.sp,
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
             SizedBox(width: 8.w),
@@ -602,44 +638,78 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16.r),
-                  child:
-                      (patient.imageUrl != null &&
-                          ImageUtils.isValidImageUrl(patient.imageUrl))
-                      ? Image.network(
-                          patient.imageUrl!,
+                  child: Builder(
+                    builder: (context) {
+                      final imageUrl = patient.imageUrl;
+                      final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+                      
+                      if (validImageUrl != null &&
+                          ImageUtils.isValidImageUrl(validImageUrl)) {
+                        return CachedNetworkImage(
+                          imageUrl: validImageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16.r),
-                                gradient: LinearGradient(
-                                  colors: [
-                                    AppColors.primary,
-                                    AppColors.secondary,
-                                  ],
-                                ),
+                          width: 80.w,
+                          height: 85.h,
+                          fadeInDuration: Duration.zero,
+                          fadeOutDuration: Duration.zero,
+                          memCacheWidth: 160,
+                          memCacheHeight: 170,
+                          placeholder: (context, url) => Container(
+                            width: 80.w,
+                            height: 85.h,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16.r),
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.primary,
+                                  AppColors.secondary,
+                                ],
                               ),
-                              child: Icon(
-                                Icons.person,
-                                color: AppColors.white,
-                                size: 30.sp,
-                              ),
-                            );
-                          },
-                        )
-                      : Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16.r),
-                            gradient: LinearGradient(
-                              colors: [AppColors.primary, AppColors.secondary],
+                            ),
+                            child: Icon(
+                              Icons.person,
+                              color: AppColors.white,
+                              size: 30.sp,
                             ),
                           ),
-                          child: Icon(
-                            Icons.person,
-                            color: AppColors.white,
-                            size: 30.sp,
+                          errorWidget: (context, url, error) => Container(
+                            width: 80.w,
+                            height: 85.h,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16.r),
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.primary,
+                                  AppColors.secondary,
+                                ],
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.person,
+                              color: AppColors.white,
+                              size: 30.sp,
+                            ),
+                          ),
+                        );
+                      }
+                      
+                      return Container(
+                        width: 80.w,
+                        height: 85.h,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16.r),
+                          gradient: LinearGradient(
+                            colors: [AppColors.primary, AppColors.secondary],
                           ),
                         ),
+                        child: Icon(
+                          Icons.person,
+                          color: AppColors.white,
+                          size: 30.sp,
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -717,6 +787,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                           arguments: {'patientId': patient.id},
                         );
                         // Reload unread counts when returning from chat
+                        // Add small delay to ensure messages are marked as read
+                        await Future.delayed(const Duration(milliseconds: 300));
                         _loadUnreadCounts();
                       },
                       child: Obx(() {

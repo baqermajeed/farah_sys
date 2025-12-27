@@ -33,6 +33,7 @@ async def my_profile(current=Depends(get_current_user)):
         doctor_ids=[str(did) for did in p.doctor_ids],
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
+        imageUrl=u.imageUrl,
     )
 
 @router.put("/me", response_model=PatientOut)
@@ -100,6 +101,7 @@ async def my_doctor(current=Depends(get_current_user)):
         user_id=str(doctor.user_id),
         name=user.name,
         phone=user.phone,
+        imageUrl=user.imageUrl,
     )
 
 @router.get("/appointments", response_model=PatientAppointmentsOut)

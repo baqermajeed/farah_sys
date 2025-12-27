@@ -71,15 +71,27 @@ class PatientController extends GetxController {
   }
 
   // جلب بيانات المريض الحالي (للمريض)
-  Future<void> loadMyProfile() async {
+  Future<void> loadMyProfile({bool showError = false}) async {
     try {
       isLoading.value = true;
       final profile = await _patientService.getMyProfile();
       myProfile.value = profile;
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      print('❌ [PatientController] Error loading profile: ${e.message}');
+      if (showError) {
+        // تأجيل عرض snackbar حتى بعد اكتمال البناء
+        Future.microtask(() {
+          Get.snackbar('خطأ', e.message);
+        });
+      }
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل البيانات');
+      print('❌ [PatientController] Error loading profile: $e');
+      if (showError) {
+        // تأجيل عرض snackbar حتى بعد اكتمال البناء
+        Future.microtask(() {
+          Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل البيانات');
+        });
+      }
     } finally {
       isLoading.value = false;
     }
@@ -164,17 +176,9 @@ class PatientController extends GetxController {
       );
       myProfile.value = updatedProfile;
       
-      // تحديث بيانات المستخدم أيضاً
+      // تحديث بيانات المستخدم أيضاً عبر إعادة جلب البيانات من السيرفر
       final authController = Get.find<AuthController>();
-      final user = authController.currentUser.value;
-      if (user != null) {
-        authController.currentUser.value = user.copyWith(
-          name: updatedProfile.name,
-          age: updatedProfile.age,
-          gender: updatedProfile.gender,
-          city: updatedProfile.city,
-        );
-      }
+      await authController.checkLoggedInUser();
       
       // إعادة تحميل الملف الشخصي لضمان التحديث
       await loadMyProfile();
