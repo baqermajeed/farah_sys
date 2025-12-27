@@ -256,9 +256,17 @@ async def serve_media(file_path: str):
     raise HTTPException(status_code=404, detail="Media file not found (R2 disabled in dev mode)")
 
 
+# Global scheduler instance
+scheduler = None
+
 @app.on_event("startup")
 async def on_startup():
     import socket
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from app.services.appointment_reminder_service import check_and_send_reminders
+    
+    global scheduler
+    
     hostname = socket.gethostname()
     try:
         # Get local IP
@@ -283,11 +291,38 @@ async def on_startup():
     await init_db()
     logger.info("Database initialized")
     print("✅ [STARTUP] Database initialized")
+    
+    # Initialize and start appointment reminder scheduler
+    try:
+        scheduler = AsyncIOScheduler()
+        # Schedule reminder check every hour
+        scheduler.add_job(
+            check_and_send_reminders,
+            trigger="cron",
+            hour="*",  # Every hour
+            minute=0,  # At minute 0 (top of the hour)
+            id="appointment_reminders",
+            replace_existing=True
+        )
+        scheduler.start()
+        logger.info("Appointment reminder scheduler started")
+        print("✅ [STARTUP] Appointment reminder scheduler started (runs every hour)")
+    except Exception as e:
+        logger.error(f"Failed to start appointment reminder scheduler: {e}")
+        print(f"⚠️ [STARTUP] Failed to start appointment reminder scheduler: {e}")
+    
     print("✅ [STARTUP] Application ready!")
     print("=" * 60)
-    # Reminder service disabled to avoid blocking the event loop
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    global scheduler
+    if scheduler:
+        try:
+            scheduler.shutdown()
+            logger.info("Appointment reminder scheduler stopped")
+            print("✅ [SHUTDOWN] Appointment reminder scheduler stopped")
+        except Exception as e:
+            logger.error(f"Error stopping scheduler: {e}")
     logger.info("Shutting down application...")
