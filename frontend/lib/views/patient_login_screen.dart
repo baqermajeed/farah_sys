@@ -142,7 +142,6 @@ class _PatientLoginScreenState extends State<PatientLoginScreen> {
                                       arguments: {
                                         'phoneNumber': _phoneController.text
                                             .trim(),
-                                        'isRegistration': false,
                                       },
                                     );
                                   },

@@ -11,6 +11,48 @@ import 'package:farah_sys_final/models/gallery_image_model.dart';
 class DoctorService {
   final _api = ApiService();
 
+  // إضافة مريض جديد وربطه بالطبيب
+  Future<PatientModel> addPatient({
+    required String name,
+    required String phoneNumber,
+    required String gender,
+    required int age,
+    required String city,
+  }) async {
+    try {
+      print('🏥 [DoctorService] Adding patient...');
+      print('   📋 Endpoint: ${ApiConstants.doctorAddPatient}');
+      print('   👤 Name: $name, Phone: $phoneNumber');
+      
+      final response = await _api.post(
+        ApiConstants.doctorAddPatient,
+        data: {
+          'name': name,
+          'phone': phoneNumber,
+          'gender': gender,
+          'age': age,
+          'city': city,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final patient = _mapPatientOutToModel(data);
+        print('✅ [DoctorService] Patient added successfully');
+        return patient;
+      } else {
+        print('❌ [DoctorService] Failed with status: ${response.statusCode}');
+        throw ApiException('فشل إضافة المريض');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل إضافة المريض: ${e.toString()}');
+    }
+  }
+
   // جلب قائمة المرضى للطبيب
   Future<List<PatientModel>> getMyPatients({
     int skip = 0,
@@ -32,7 +74,7 @@ class DoctorService {
       print('🏥 [DoctorService] Response status: ${response.statusCode}');
       print('🏥 [DoctorService] Response data type: ${response.data.runtimeType}');
       print('🏥 [DoctorService] Response data: ${response.data}');
-      
+
       if (response.statusCode == 200) {
         // Handle different response formats
         dynamic responseData = response.data;
@@ -113,41 +155,131 @@ class DoctorService {
   // إضافة سجل (ملاحظة) للمريض
   Future<MedicalRecordModel> addNote({
     required String patientId,
-    required String note,
-    String? imagePath,
-    List<int>? imageBytes,
-    String? fileName,
+    String? note,
+    File? imageFile,
+    List<File>? imageFiles,
   }) async {
     try {
-      dio.Response response;
+      print('📝 [DoctorService] Adding note for patient: $patientId');
       
-      if (imageBytes != null) {
-        // رفع صورة مع الملاحظة
-        response = await _api.uploadFileBytes(
-          ApiConstants.doctorPatientNotes(patientId),
-          imageBytes,
-          fileName: fileName ?? 'note.jpg',
-          fileKey: 'image',
-          additionalData: {'note': note},
+      // استخدام imageFiles إذا كان متوفراً، وإلا استخدم imageFile
+      final filesToSend = imageFiles ?? (imageFile != null ? [imageFile] : []);
+      
+      // إعداد FormData
+      final formData = dio.FormData.fromMap({
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+      
+      // إضافة جميع الصور
+      print('📸 [DoctorService] Adding ${filesToSend.length} images to form data');
+      for (var i = 0; i < filesToSend.length; i++) {
+        final file = filesToSend[i];
+        final multipartFile = await dio.MultipartFile.fromFile(
+          file.path,
+          filename: file.path.split('/').last.split('\\').last,
         );
-      } else {
-        // إضافة ملاحظة فقط
-        response = await _api.post(
-          ApiConstants.doctorPatientNotes(patientId),
-          data: {'note': note},
-        );
+        formData.files.add(MapEntry(
+          'images',
+          multipartFile,
+        ));
+        print('📸 [DoctorService] Added image ${i + 1}/${filesToSend.length}: ${file.path}');
       }
+      
+      final response = await _api.post(
+        ApiConstants.doctorPatientNotes(patientId),
+        formData: formData,
+      );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        print('✅ [DoctorService] Note added successfully');
         return MedicalRecordModel.fromJson(response.data);
       } else {
         throw ApiException('فشل إضافة السجل');
       }
     } catch (e) {
+      print('❌ [DoctorService] Error adding note: $e');
       if (e is ApiException) {
         rethrow;
       }
       throw ApiException('فشل إضافة السجل: ${e.toString()}');
+    }
+  }
+
+  // تحديث سجل (ملاحظة) للمريض
+  Future<MedicalRecordModel> updateNote({
+    required String patientId,
+    required String noteId,
+    String? note,
+    List<File>? imageFiles,
+  }) async {
+    try {
+      print('📝 [DoctorService] Updating note $noteId for patient: $patientId');
+      
+      // إعداد FormData
+      final formData = dio.FormData.fromMap({
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+      
+      // إضافة جميع الصور
+      if (imageFiles != null && imageFiles.isNotEmpty) {
+        print('📸 [DoctorService] Adding ${imageFiles.length} images to form data');
+        for (var i = 0; i < imageFiles.length; i++) {
+          final file = imageFiles[i];
+          final multipartFile = await dio.MultipartFile.fromFile(
+            file.path,
+            filename: file.path.split('/').last.split('\\').last,
+          );
+          formData.files.add(MapEntry(
+            'images',
+            multipartFile,
+          ));
+          print('📸 [DoctorService] Added image ${i + 1}/${imageFiles.length}: ${file.path}');
+        }
+      }
+      
+      final response = await _api.put(
+        ApiConstants.doctorUpdateNote(patientId, noteId),
+        formData: formData,
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('✅ [DoctorService] Note updated successfully');
+        return MedicalRecordModel.fromJson(response.data);
+      } else {
+        throw ApiException('فشل تحديث السجل');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error updating note: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل تحديث السجل: ${e.toString()}');
+    }
+  }
+
+  // حذف سجل (ملاحظة) للمريض
+  Future<void> deleteNote({
+    required String patientId,
+    required String noteId,
+  }) async {
+    try {
+      print('🗑️ [DoctorService] Deleting note $noteId for patient: $patientId');
+      
+      final response = await _api.delete(
+        ApiConstants.doctorDeleteNote(patientId, noteId),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        print('✅ [DoctorService] Note deleted successfully');
+      } else {
+        throw ApiException('فشل حذف السجل');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error deleting note: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل حذف السجل: ${e.toString()}');
     }
   }
 
@@ -156,41 +288,68 @@ class DoctorService {
     required String patientId,
     required DateTime scheduledAt,
     String? note,
-    List<int>? imageBytes,
-    String? fileName,
+    File? imageFile,
+    List<File>? imageFiles,
   }) async {
     try {
+      print('📅 [DoctorService] Adding appointment for patient: $patientId');
+      
+      // استخدام imageFiles إذا كان متوفراً، وإلا استخدم imageFile
+      final filesToSend = imageFiles ?? (imageFile != null ? [imageFile] : []);
+      
       dio.Response response;
       
-      if (imageBytes != null) {
-        // رفع صورة مع الموعد
-        response = await _api.uploadFileBytes(
-          ApiConstants.doctorPatientAppointments(patientId),
-          imageBytes,
-          fileName: fileName ?? 'appointment.jpg',
-          fileKey: 'image',
-          additionalData: {
+      // إعداد FormData مع عدة صور
+      final formData = dio.FormData.fromMap({
             'scheduled_at': scheduledAt.toIso8601String(),
-            if (note != null) 'note': note,
-          },
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+      
+      // إضافة جميع الصور
+      print('📸 [DoctorService] Adding ${filesToSend.length} images to form data');
+      for (var i = 0; i < filesToSend.length; i++) {
+        final file = filesToSend[i];
+        final multipartFile = await dio.MultipartFile.fromFile(
+          file.path,
+          filename: file.path.split('/').last.split('\\').last,
         );
-      } else {
-        // إضافة موعد فقط
+        formData.files.add(MapEntry(
+          'images',
+          multipartFile,
+        ));
+        print('📸 [DoctorService] Added image ${i + 1}/${filesToSend.length}: ${file.path}');
+      }
+      print('📸 [DoctorService] Total files in formData: ${formData.files.length}');
+      
         response = await _api.post(
           ApiConstants.doctorPatientAppointments(patientId),
-          data: {
-            'scheduled_at': scheduledAt.toIso8601String(),
-            if (note != null) 'note': note,
-          },
+        formData: formData,
         );
-      }
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return AppointmentModel.fromJson(response.data);
+        print('✅ [DoctorService] Appointment added successfully');
+        try {
+          // التأكد من أن response.data هو Map
+          final data = response.data;
+          if (data is Map<String, dynamic>) {
+            return AppointmentModel.fromJson(data);
+          } else {
+            print('⚠️ [DoctorService] Unexpected response data type: ${data.runtimeType}');
+            // إنشاء AppointmentModel افتراضي إذا فشل parsing
+            throw ApiException('خطأ في معالجة بيانات الموعد');
+          }
+        } catch (parseError) {
+          print('❌ [DoctorService] Error parsing appointment response: $parseError');
+          print('   Response data: ${response.data}');
+          // رغم الخطأ في parsing، الموعد تمت إضافته بنجاح في Backend
+          // لذا يمكن إرجاع null أو إعادة تحميل المواعيد
+          throw ApiException('تمت إضافة الموعد لكن حدث خطأ في معالجة البيانات');
+        }
       } else {
         throw ApiException('فشل إضافة الموعد');
       }
     } catch (e) {
+      print('❌ [DoctorService] Error adding appointment: $e');
       if (e is ApiException) {
         rethrow;
       }
@@ -375,6 +534,41 @@ class DoctorService {
     }
   }
 
+  // جلب مواعيد المريض المحدد
+  Future<List<AppointmentModel>> getPatientAppointments(
+    String patientId, {
+    int skip = 0,
+    int limit = 50,
+  }) async {
+    try {
+      print('📅 [DoctorService] Fetching appointments for patient: $patientId');
+      
+      final response = await _api.get(
+        ApiConstants.doctorPatientAppointments(patientId),
+        queryParameters: {
+          'skip': skip,
+          'limit': limit,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        print('✅ [DoctorService] Fetched ${data.length} appointments');
+        return data
+            .map((json) => AppointmentModel.fromJson(json as Map<String, dynamic>))
+            .toList();
+      } else {
+        throw ApiException('فشل جلب المواعيد');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error fetching appointments: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب المواعيد: ${e.toString()}');
+    }
+  }
+
   // جلب قائمة صور معرض المريض
   Future<List<GalleryImageModel>> getPatientGallery(
     String patientId, {
@@ -410,6 +604,83 @@ class DoctorService {
     }
   }
 
+  // حذف موعد للمريض
+  Future<bool> deleteAppointment(String patientId, String appointmentId) async {
+    try {
+      print('🗑️ [DoctorService] Deleting appointment: $appointmentId for patient: $patientId');
+      
+      final response = await _api.delete(
+        ApiConstants.doctorDeleteAppointment(patientId, appointmentId),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        print('✅ [DoctorService] Appointment deleted successfully');
+        return true;
+      } else {
+        throw ApiException('فشل حذف الموعد');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error deleting appointment: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل حذف الموعد: ${e.toString()}');
+    }
+  }
+
+  // تحديث حالة الموعد
+  Future<AppointmentModel> updateAppointmentStatus(
+    String patientId,
+    String appointmentId,
+    String status,
+  ) async {
+    try {
+      print('🔄 [DoctorService] Updating appointment status: $appointmentId to $status');
+      
+      final response = await _api.patch(
+        ApiConstants.doctorUpdateAppointmentStatus(patientId, appointmentId),
+        data: {'status': status},
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ [DoctorService] Appointment status updated successfully');
+        return AppointmentModel.fromJson(response.data);
+      } else {
+        throw ApiException('فشل تحديث حالة الموعد');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error updating appointment status: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل تحديث حالة الموعد: ${e.toString()}');
+    }
+  }
+
+  // حذف صورة من معرض المريض
+  Future<bool> deleteGalleryImage(String patientId, String imageId) async {
+    try {
+      print('🗑️ [DoctorService] Deleting gallery image: $imageId for patient: $patientId');
+      
+      final response = await _api.delete(
+        ApiConstants.doctorDeleteGalleryImage(patientId, imageId),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ [DoctorService] Gallery image deleted successfully');
+        return true;
+      } else {
+        throw ApiException('فشل حذف الصورة');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error deleting gallery image: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل حذف الصورة: ${e.toString()}');
+    }
+  }
+
   // تحويل PatientOut من Backend إلى PatientModel
   PatientModel _mapPatientOutToModel(Map<String, dynamic> json) {
     return PatientModel(
@@ -420,7 +691,16 @@ class DoctorService {
       age: json['age'] ?? 0,
       city: json['city'] ?? '',
       imageUrl: json['qr_image_path'],
-      doctorId: json['primary_doctor_id']?.toString(),
+      doctorIds: json['doctor_ids'] != null
+          ? List<String>.from(json['doctor_ids'])
+          : (json['doctorIds'] != null
+              ? List<String>.from(json['doctorIds'])
+              : (json['primary_doctor_id'] != null || json['secondary_doctor_id'] != null
+                  ? [
+                      if (json['primary_doctor_id'] != null) json['primary_doctor_id'],
+                      if (json['secondary_doctor_id'] != null) json['secondary_doctor_id'],
+                    ].whereType<String>().toList()
+                  : const [])),
       treatmentHistory: json['treatment_type'] != null
           ? [json['treatment_type']]
           : null,

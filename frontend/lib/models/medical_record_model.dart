@@ -46,14 +46,18 @@ class MedicalRecordModel {
         ? DateTime.parse(createdAt)
         : (createdAt is DateTime ? createdAt : DateTime.now());
     
+    // دعم image_paths (الجديد) و image_path (القديم) و images
+    final imagePaths = json['image_paths'];
     final imagePath = json['image_path'];
-    final images = imagePath != null 
-        ? [imagePath.toString()]
-        : (json['images'] != null 
-            ? (json['images'] is List 
-                ? List<String>.from(json['images'].map((e) => e.toString()))
-                : null)
-            : null);
+    final images = imagePaths != null && imagePaths is List && imagePaths.isNotEmpty
+        ? List<String>.from(imagePaths.map((e) => e.toString()))
+        : (imagePath != null 
+            ? [imagePath.toString()]
+            : (json['images'] != null 
+                ? (json['images'] is List 
+                    ? List<String>.from(json['images'].map((e) => e.toString()))
+                    : null)
+                : null));
     
     return MedicalRecordModel(
       id: json['id']?.toString() ?? '',

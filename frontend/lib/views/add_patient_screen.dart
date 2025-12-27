@@ -6,8 +6,11 @@ import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/gender_selector.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/services/patient_service.dart';
+import 'package:farah_sys_final/core/routes/app_routes.dart';
+import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/controllers/patient_controller.dart';
 
 class AddPatientScreen extends StatefulWidget {
   const AddPatientScreen({super.key});
@@ -18,11 +21,14 @@ class AddPatientScreen extends StatefulWidget {
 
 class _AddPatientScreenState extends State<AddPatientScreen> {
   final AuthController _authController = Get.find<AuthController>();
+  final PatientController _patientController = Get.find<PatientController>();
+  final PatientService _patientService = PatientService();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
   String? selectedGender;
   String? selectedCity;
+  bool _isLoading = false;
 
   final List<String> cities = [
     'بغداد',
@@ -57,62 +63,33 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                   children: [
                     SizedBox(height: 56.h),
                     SizedBox(height: 12.h),
-                    // Logo with background tooth icon
-                    SizedBox(
-                      height: 150.h,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        clipBehavior: Clip.none,
-                        children: [
-                          // Large faint tooth icon in background
-                          Positioned(
-                            child: Opacity(
-                              opacity: 0.85,
-                              child: Image.asset(
-                                'assets/images/tooth_logo.png',
-                                width: 180.w,
-                                height: 180.h,
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ),
-                          // Main logo
-                          Image.asset(
-                            'assets/images/logo.png',
-                            width: 90.w,
-                            height: 90.h,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 90.w,
-                                height: 90.h,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.primaryLight.withValues(
-                                    alpha: 0.3,
-                                  ),
-                                ),
-                                child: Icon(
-                                  Icons.local_hospital,
-                                  size: 45.sp,
-                                  color: AppColors.primary,
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
+                    // Doctor Profile Picture
+                    Obx(() {
+                      final user = _authController.currentUser.value;
+                      return CircleAvatar(
+                        radius: 60.r,
+                        backgroundColor: AppColors.primaryLight,
+                        backgroundImage: user?.imageUrl != null
+                            ? NetworkImage(user!.imageUrl!)
+                            : null,
+                        child: user?.imageUrl == null
+                            ? Icon(
+                                Icons.person,
+                                size: 60.sp,
+                                color: AppColors.primary,
+                              )
+                            : null,
+                      );
+                    }),
                     SizedBox(height: 16.h),
                     // Title
                     Text(
-                      'إنشاء حساب',
-                      textAlign: TextAlign.right,
+                      'اضافة مريض',
+                      textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
-                        fontSize: 22.sp,
+                        fontSize: 20.sp,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: AppColors.primary,
                       ),
                     ),
                     SizedBox(height: 24.h),
@@ -178,12 +155,14 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                     ),
                     SizedBox(height: 24.h),
                     // Add button (without icon)
-                    Obx(
-                      () => Container(
+                    Obx(() {
+                      final isLoading = _authController.isLoading.value || _isLoading;
+                      
+                      return Container(
                         width: double.infinity,
                         height: 50.h,
                         decoration: BoxDecoration(
-                          color: _authController.isLoading.value
+                          color: isLoading
                               ? AppColors.textHint
                               : AppColors.secondary,
                           borderRadius: BorderRadius.circular(16.r),
@@ -191,7 +170,7 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: _authController.isLoading.value
+                            onTap: isLoading
                                 ? null
                                 : () async {
                                     if (_nameController.text.isEmpty ||
@@ -219,32 +198,127 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                                       return;
                                     }
 
-                                    // Request OTP first
-                                    await _authController.registerPatient(
-                                      name: _nameController.text.trim(),
-                                      phoneNumber: _phoneController.text.trim(),
-                                      gender: selectedGender!,
-                                      age: age,
-                                      city: selectedCity!,
-                                    );
+                                    final currentUserType = _authController.currentUser.value?.userType;
+                                    final isReceptionistAction = currentUserType != null && currentUserType.toLowerCase() == 'receptionist';
+                                    
+                                    if (isReceptionistAction) {
+                                      // للرسبشن: إنشاء مريض بدون ربطه بطبيب
+                                      setState(() {
+                                        _isLoading = true;
+                                      });
+                                      
+                                      try {
+                                        final createdPatient = await _patientService.createPatientForReception(
+                                          name: _nameController.text.trim(),
+                                          phoneNumber: _phoneController.text.trim(),
+                                          gender: selectedGender!,
+                                          age: age,
+                                          city: selectedCity!,
+                                        );
+                                        
+                                        // تحديث قائمة المرضى في الصفحة الرئيسية
+                                        await _patientController.loadPatients();
+                                        
+                                        if (mounted) {
+                                          // إظهار dialog النجاح
+                                          await showDialog(
+                                            context: context,
+                                            barrierDismissible: false,
+                                            builder: (context) => AlertDialog(
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(16.r),
+                                              ),
+                                              title: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.check_circle,
+                                                    color: AppColors.success,
+                                                    size: 24.sp,
+                                                  ),
+                                                  SizedBox(width: 12.w),
+                                                  Text(
+                                                    'نجح',
+                                                    style: TextStyle(
+                                                      fontSize: 18.sp,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: AppColors.textPrimary,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              content: Text(
+                                                'تم إضافة المريض بنجاح',
+                                                style: TextStyle(
+                                                  fontSize: 16.sp,
+                                                  color: AppColors.textSecondary,
+                                                ),
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () async {
+                                                    Navigator.of(context).pop(); // Close dialog
+                                                    // الانتقال إلى صفحة ملف المريض
+                                                    await Future.delayed(const Duration(milliseconds: 100));
+                                                    Get.offNamed(
+                                                      AppRoutes.patientDetails,
+                                                      arguments: {'patientId': createdPatient.id},
+                                                    );
+                                                  },
+                                                  child: Text(
+                                                    'حسناً',
+                                                    style: TextStyle(
+                                                      fontSize: 16.sp,
+                                                      color: AppColors.primary,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }
+                                      } on ApiException catch (e) {
+                                        Get.snackbar(
+                                          'خطأ',
+                                          e.message,
+                                          snackPosition: SnackPosition.TOP,
+                                          backgroundColor: AppColors.error,
+                                          colorText: AppColors.white,
+                                        );
+                                      } catch (e) {
+                                        Get.snackbar(
+                                          'خطأ',
+                                          'فشل إضافة المريض',
+                                          snackPosition: SnackPosition.TOP,
+                                          backgroundColor: AppColors.error,
+                                          colorText: AppColors.white,
+                                        );
+                                      } finally {
+                                        if (mounted) {
+                                          setState(() {
+                                            _isLoading = false;
+                                          });
+                                        }
+                                      }
+                                    } else {
+                                      // للطبيب: إضافة المريض وربطه بالطبيب مباشرة
+                                      final success = await _authController.registerPatient(
+                                        name: _nameController.text.trim(),
+                                        phoneNumber: _phoneController.text.trim(),
+                                        gender: selectedGender!,
+                                        age: age,
+                                        city: selectedCity!,
+                                      );
 
-                                    // Navigate to OTP verification
-                                    Get.toNamed(
-                                      AppRoutes.otpVerification,
-                                      arguments: {
-                                        'phoneNumber': _phoneController.text
-                                            .trim(),
-                                        'name': _nameController.text.trim(),
-                                        'gender': selectedGender,
-                                        'age': age,
-                                        'city': selectedCity,
-                                        'isRegistration': true,
-                                      },
-                                    );
+                                      // العودة إلى قائمة المرضى
+                                      if (mounted) {
+                                        Get.back(result: success);
+                                      }
+                                    }
                                   },
                             borderRadius: BorderRadius.circular(16.r),
                             child: Center(
-                              child: _authController.isLoading.value
+                              child: isLoading
                                   ? SizedBox(
                                       width: 20.w,
                                       height: 20.h,
@@ -252,8 +326,8 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                                         strokeWidth: 2,
                                         valueColor:
                                             AlwaysStoppedAnimation<Color>(
-                                              AppColors.white,
-                                            ),
+                                          AppColors.white,
+                                        ),
                                       ),
                                     )
                                   : Text(
@@ -268,8 +342,8 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                             ),
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    }),
                     SizedBox(height: 32.h),
                   ],
                 ),

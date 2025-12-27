@@ -99,7 +99,7 @@ class ApiService {
   // POST Request
   Future<dio.Response> post(
     String endpoint, {
-    Map<String, dynamic>? data,
+    dynamic data,
     dio.FormData? formData,
     dio.Options? options,
   }) async {
@@ -144,10 +144,15 @@ class ApiService {
   Future<dio.Response> put(
     String endpoint, {
     Map<String, dynamic>? data,
+    dio.FormData? formData,
     dio.Options? options,
   }) async {
     try {
-      final response = await _dio.put(endpoint, data: data, options: options);
+      final response = await _dio.put(
+        endpoint,
+        data: formData ?? data,
+        options: options,
+      );
       return response;
     } on DioException catch (e) {
       throw _handleDioError(e);
@@ -256,11 +261,35 @@ class ApiService {
         return NetworkException('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى.');
       case DioExceptionType.badResponse:
         final statusCode = error.response?.statusCode;
-        final message =
-            error.response?.data?['detail'] ??
-            error.response?.data?['message'] ??
-            error.response?.statusMessage ??
-            'حدث خطأ في الخادم';
+        final responseData = error.response?.data;
+        String message;
+        
+        // التحقق من نوع responseData أولاً
+        if (responseData is String) {
+          // إذا كان String (مثل traceback)، استخدمه مباشرة
+          message = responseData;
+        } else if (responseData is Map) {
+          // إذا كان Map، حاول استخراج detail
+          final detail = responseData['detail'];
+          if (detail is List && detail.isNotEmpty) {
+            final firstError = detail[0];
+            if (firstError is Map && firstError['msg'] != null) {
+              message = firstError['msg'].toString();
+            } else {
+              message = detail.toString();
+            }
+          } else if (detail is String) {
+            message = detail;
+          } else {
+            message = responseData['message']?.toString() ??
+                error.response?.statusMessage ??
+                'حدث خطأ في الخادم';
+          }
+        } else {
+          // نوع غير متوقع
+          message = error.response?.statusMessage ??
+              'حدث خطأ في الخادم';
+        }
 
         print('   🚨 Bad Response: $statusCode - $message');
 

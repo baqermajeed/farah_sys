@@ -2,6 +2,8 @@ import 'package:get/get.dart';
 import 'package:farah_sys_final/models/user_model.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/services/doctor_service.dart';
+import 'package:farah_sys_final/services/patient_service.dart';
 
 class AuthController extends GetxController {
   final _authService = AuthService();
@@ -116,17 +118,10 @@ class AuthController extends GetxController {
   Future<void> verifyOtpAndLogin({
     required String phoneNumber,
     required String code,
-    String? name,
-    String? gender,
-    int? age,
-    String? city,
-    bool returnToReception = false,
   }) async {
     print('🎯 [AuthController] verifyOtpAndLogin called');
     print('   📱 Phone: $phoneNumber');
     print('   🔑 Code: $code');
-    print('   👤 Name: $name');
-    print('   Return to reception: $returnToReception');
 
     if (phoneNumber.trim().isEmpty || code.trim().isEmpty) {
       Get.snackbar('خطأ', 'يرجى إدخال رقم الهاتف والرمز');
@@ -136,19 +131,30 @@ class AuthController extends GetxController {
     try {
       print('⏳ [AuthController] Setting loading to true');
       isLoading.value = true;
+
       print('🔐 [AuthController] Calling authService.verifyOtp...');
 
       final res = await _authService.verifyOtp(
         phone: phoneNumber.trim(),
         code: code.trim(),
-        name: name,
-        gender: gender,
-        age: age,
-        city: city,
       );
 
       if (res['ok'] == true) {
-        print('✅ [AuthController] OTP verified successfully');
+        final accountExists = res['accountExists'] as bool? ?? false;
+
+        if (!accountExists) {
+          // الحساب غير موجود - الانتقال إلى صفحة إنشاء الحساب
+          print(
+            '⚠️ [AuthController] Account does not exist, navigating to registration',
+          );
+          Get.offNamed(
+            AppRoutes.patientRegistration,
+            arguments: {'phoneNumber': phoneNumber},
+          );
+          return;
+        }
+
+        print('✅ [AuthController] OTP verified successfully, account exists');
 
         // جلب معلومات المستخدم بعد التحقق من OTP
         final userRes = await _authService.getCurrentUser();
@@ -162,14 +168,38 @@ class AuthController extends GetxController {
           currentUser.value = user;
           print('💾 [AuthController] Current user updated in controller');
 
-          if (returnToReception) {
-            print('🔀 [AuthController] Navigating to reception home');
-            Get.offAllNamed(AppRoutes.receptionHome);
-            Get.snackbar('نجح', 'تم إضافة المريض بنجاح');
-          } else {
-            print('🔀 [AuthController] Navigating to patient home');
-            Get.offAllNamed(AppRoutes.patientHome);
-            Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
+          // التحقق من وجود طبيب مرتبط
+          print('🔍 [AuthController] Checking doctor assignment...');
+          final patientService = PatientService();
+          try {
+            final patientProfile = await patientService.getMyProfile();
+            print('📋 [AuthController] Patient profile loaded:');
+            print('   - Patient ID: ${patientProfile.id}');
+            print('   - Doctor IDs: ${patientProfile.doctorIds}');
+
+            final hasDoctor = patientProfile.doctorIds.isNotEmpty;
+
+            print('🔍 [AuthController] Has doctor: $hasDoctor');
+
+            if (hasDoctor) {
+              print(
+                '✅ [AuthController] Patient has doctor assigned (IDs: ${patientProfile.doctorIds}), navigating to home',
+              );
+              Get.offAllNamed(AppRoutes.patientHome);
+              Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
+            } else {
+              print(
+                '⚠️ [AuthController] Patient has no doctor assigned, navigating to welcome screen',
+              );
+              Get.offAllNamed(AppRoutes.patientWelcome);
+            }
+          } catch (e) {
+            print('❌ [AuthController] Error checking doctor assignment: $e');
+            print(
+              '❌ [AuthController] Error stack trace: ${StackTrace.current}',
+            );
+            // في حالة الخطأ، نذهب إلى واجهة الترحيب
+            Get.offAllNamed(AppRoutes.patientWelcome);
           }
         } else {
           print(
@@ -192,6 +222,65 @@ class AuthController extends GetxController {
       Get.snackbar('خطأ', 'فشل التحقق من رمز OTP');
     } finally {
       print('🏁 [AuthController] Setting loading to false');
+      isLoading.value = false;
+    }
+  }
+
+  // إنشاء حساب مريض جديد
+  Future<void> createPatientAccount({
+    required String phoneNumber,
+    required String name,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    print('🎯 [AuthController] createPatientAccount called');
+    print('   📱 Phone: $phoneNumber');
+    print('   👤 Name: $name');
+
+    try {
+      isLoading.value = true;
+
+      final res = await _authService.createPatientAccount(
+        phone: phoneNumber.trim(),
+        name: name,
+        gender: gender,
+        age: age,
+        city: city,
+      );
+
+      if (res['ok'] == true) {
+        print('✅ [AuthController] Account created successfully');
+
+        // جلب معلومات المستخدم بعد إنشاء الحساب
+        final userRes = await _authService.getCurrentUser();
+        if (userRes['ok'] == true) {
+          final userData = userRes['data'] as Map<String, dynamic>;
+          final user = UserModel.fromJson(userData);
+
+          print(
+            '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
+          );
+          currentUser.value = user;
+
+          // بعد إنشاء الحساب، الانتقال إلى صفحة الترحيب (لأنه ليس له طبيب بعد)
+          print('🔀 [AuthController] Navigating to welcome screen');
+          Get.offAllNamed(AppRoutes.patientWelcome);
+          Get.snackbar('نجح', 'تم إنشاء الحساب بنجاح');
+        } else {
+          Get.snackbar(
+            'خطأ',
+            userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم',
+          );
+        }
+      } else {
+        print('❌ [AuthController] Account creation failed: ${res['error']}');
+        Get.snackbar('خطأ', res['error']?.toString() ?? 'فشل إنشاء الحساب');
+      }
+    } catch (e) {
+      print('❌ [AuthController] Error in createPatientAccount: $e');
+      Get.snackbar('خطأ', 'فشل إنشاء الحساب');
+    } finally {
       isLoading.value = false;
     }
   }
@@ -299,7 +388,7 @@ class AuthController extends GetxController {
   }
 
   // تسجيل مريض جديد (مع OTP)
-  Future<void> registerPatient({
+  Future<bool> registerPatient({
     required String name,
     required String phoneNumber,
     required String gender,
@@ -312,20 +401,20 @@ class AuthController extends GetxController {
 
     try {
       isLoading.value = true;
-      // أولاً طلب OTP
-      final res = await _authService.requestOtp(phoneNumber.trim());
+      // إضافة المريض وربطه بالطبيب مباشرة
+      final doctorService = DoctorService();
+      await doctorService.addPatient(
+        name: name,
+        phoneNumber: phoneNumber.trim(),
+        gender: gender,
+        age: age,
+        city: city,
+      );
 
-      if (res['ok'] == true) {
-        Get.snackbar(
-          'نجح',
-          'تم إرسال رمز التحقق. يرجى إدخال الرمز لإكمال التسجيل',
-        );
-      } else {
-        Get.snackbar('خطأ', res['error']?.toString() ?? 'فشل إرسال رمز التحقق');
-      }
+      return true;
     } catch (e) {
       print('❌ [AuthController] Error in registerPatient: $e');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء التسجيل');
+      return false;
     } finally {
       isLoading.value = false;
     }

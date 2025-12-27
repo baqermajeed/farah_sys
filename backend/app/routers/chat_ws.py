@@ -72,8 +72,8 @@ async def chat_ws(websocket: WebSocket, patient_id: str, token: str = Query(""))
             await websocket.close(code=4403, reason="Doctor profile not found")
             return
         
-        # التحقق من أن الطبيب معين للمريض (أساسي أو ثانوي)
-        if doctor.id not in [patient.primary_doctor_id, patient.secondary_doctor_id]:
+        # التحقق من أن الطبيب معين للمريض (في doctor_ids)
+        if doctor.id not in patient.doctor_ids:
             await websocket.close(code=4403, reason="Doctor not assigned to this patient")
             return
         
@@ -87,11 +87,11 @@ async def chat_ws(websocket: WebSocket, patient_id: str, token: str = Query(""))
             await websocket.close(code=4403)
             return
         
-        # استخدام الطبيب الأساسي أو الثانوي
-        doctor_id = patient.primary_doctor_id or patient.secondary_doctor_id
-        if not doctor_id:
+        # استخدام أول طبيب في القائمة
+        if not patient.doctor_ids:
             await websocket.close(code=4403, reason="No doctor assigned to this patient")
             return
+        doctor_id = patient.doctor_ids[0]
         
         room = await _ensure_room(patient_id=patient.id, doctor_id=doctor_id)
         room_key = f"room:{room.id}"

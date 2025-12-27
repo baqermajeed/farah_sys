@@ -4,12 +4,11 @@ from pydantic import Field
 
 class Patient(Document):
     """ملف المريض.
-    - روابط للطبيب الأساسي/الثانوي عبر المعرفات.
+    - روابط للأطباء عبر قائمة المعرفات.
     - لكل مريض رمز QR ثابت وصورته.
     """
     user_id: Indexed(OID)
-    primary_doctor_id: Indexed(OID) | None = None
-    secondary_doctor_id: Indexed(OID) | None = None
+    doctor_ids: list[OID] = []  # قائمة معرفات الأطباء المرتبطين
     treatment_type: str | None = None
 
     qr_code_data: Indexed(str, unique=True) = ""

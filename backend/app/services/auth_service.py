@@ -49,12 +49,8 @@ async def verify_otp_and_login(
     *,
     phone: str,
     code: str,
-    name: Optional[str] = None,
-    gender: Optional[str] = None,
-    age: Optional[int] = None,
-    city: Optional[str] = None,
-) -> tuple[str, User]:
-    """Verify OTP؛ يسمح فقط للمريض، وينشئ حساب مريض إن لم يوجد. يرجع (jwt, user)."""
+) -> tuple[str | None, User | None]:
+    """Verify OTP فقط - لا ينشئ حساب جديد. يرجع (token, user) أو (None, None) إذا لم يكن الحساب موجود."""
     print(f"🔍 [AuthService] verify_otp_and_login called")
     print(f"   📱 Phone: {phone}")
     print(f"   🔑 Code: {code}")
@@ -69,31 +65,38 @@ async def verify_otp_and_login(
         .first_or_none()
     )
 
-    if not otp:
-        print(f"   ❌ OTP not found for phone: {phone}")
-        raise HTTPException(status_code=400, detail="OTP not found")
+    # Temporary: accept "1234" as valid code (skip OTP validation)
+    is_temp_code = code.strip() == "1234"
     
-    print(f"   ✅ OTP found: created_at={otp.created_at}, expires_at={otp.expires_at}")
+    if not is_temp_code:
+        if not otp:
+            print(f"   ❌ OTP not found for phone: {phone}")
+            raise HTTPException(status_code=400, detail="OTP not found")
+        
+        print(f"   ✅ OTP found: created_at={otp.created_at}, expires_at={otp.expires_at}")
 
-    expires_at = otp.expires_at
-    if expires_at is not None and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at = otp.expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-    code_hash = _hash_code(code)
-    print(f"   🔐 Code hash comparison: stored={otp.code_hash[:20]}..., provided={code_hash[:20]}...")
-    print(f"   ⏰ Expiry check: expires_at={expires_at}, now={now}, expired={expires_at < now}")
+        code_hash = _hash_code(code)
+        print(f"   🔐 Code hash comparison: stored={otp.code_hash[:20]}..., provided={code_hash[:20]}...")
+        print(f"   ⏰ Expiry check: expires_at={expires_at}, now={now}, expired={expires_at < now}")
 
-    if expires_at < now or otp.code_hash != code_hash:
-        print(f"   ❌ Invalid or expired code")
-        raise HTTPException(status_code=400, detail="Invalid or expired code")
+        if expires_at < now or otp.code_hash != code_hash:
+            print(f"   ❌ Invalid or expired code")
+            raise HTTPException(status_code=400, detail="Invalid or expired code")
+        
+        # Mark as used
+        otp.verified_at = now
+        await otp.save()
+        print(f"   ✅ OTP marked as verified")
+    else:
+        print(f"   ✅ Temporary code '1234' accepted (skipping OTP validation)")
 
     print(f"   ✅ OTP code is valid")
-    # Mark as used
-    otp.verified_at = now
-    await otp.save()
-    print(f"   ✅ OTP marked as verified")
 
-    # Lookup or create user
+    # Lookup user فقط - لا ننشئ حساب جديد
     print(f"   🔍 Looking up user by phone: {phone}")
     user = await User.find_one(User.phone == phone)
 
@@ -106,26 +109,8 @@ async def verify_otp_and_login(
         )
 
     if not user:
-        print(f"   👤 User not found, creating new patient user...")
-        user = User(
-            name=name,
-            phone=phone,
-            role=Role.PATIENT,
-            gender=gender,
-            age=age,
-            city=city,
-        )
-        await user.insert()
-        print(f"   ✅ User created: {user.id}")
-        # qr_code_data is unique, so avoid inserting empty string which may conflict
-        from os import urandom
-
-        tmp_qr = f"tmp-{urandom(8).hex()}"
-        patient = Patient(user_id=user.id, qr_code_data=tmp_qr, qr_image_path=None)
-        await patient.insert()
-        print(f"   ✅ Patient profile created: {patient.id}")
-        await ensure_patient_qr(patient)
-        print(f"   ✅ QR code generated")
+        print(f"   ⚠️ User not found - account does not exist")
+        return None, None
     else:
         print(f"   ✅ Existing user found: {user.name} (ID: {user.id})")
 

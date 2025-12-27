@@ -1,14 +1,34 @@
 import 'dart:convert';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:farah_sys_final/services/api_service.dart';
 import 'package:farah_sys_final/core/network/api_constants.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/models/message_model.dart';
+import 'package:farah_sys_final/services/socket_service.dart';
 
 class ChatService {
   final _api = ApiService();
-  WebSocketChannel? _channel;
-  String? _currentPatientId;
+  final SocketService _socketService = SocketService();
+
+  // جلب قائمة المحادثات
+  Future<List<Map<String, dynamic>>> getChatList() async {
+    try {
+      final response = await _api.get(ApiConstants.chatList);
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        return data.map((json) => json as Map<String, dynamic>).toList();
+      } else {
+        throw ApiException('فشل جلب قائمة المحادثات');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب قائمة المحادثات: ${e.toString()}');
+    }
+  }
 
   // جلب الرسائل من API
   Future<List<MessageModel>> getMessages({
@@ -41,101 +61,85 @@ class ChatService {
     }
   }
 
-  // الاتصال بـ WebSocket
-  Future<void> connectWebSocket({
+  // إرسال رسالة مع صورة (multipart)
+  Future<MessageModel> sendMessageWithImage({
     required String patientId,
-    required Function(MessageModel) onMessage,
-    Function()? onConnected,
-    Function(dynamic)? onError,
+    String? content,
+    File? image,
   }) async {
     try {
-      // إغلاق الاتصال السابق إن وجد
-      disconnect();
-
       final token = await _api.getToken();
       if (token == null) {
         throw ApiException('غير مصرح به');
       }
+
+      final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.chatSendMessage(patientId)}');
       
-      final wsUrl = '${ApiConstants.wsChat(patientId)}?token=$token';
-      
-      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-      _currentPatientId = patientId;
+      final request = http.MultipartRequest('POST', uri);
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+      });
 
-      _channel!.stream.listen(
-        (message) {
-          try {
-            // Parse JSON message
-            Map<String, dynamic> data = {};
-            if (message is String) {
-              if (message.startsWith('{')) {
-                data = _parseJsonString(message);
-              }
-            } else if (message is Map) {
-              data = Map<String, dynamic>.from(message);
-            }
-            
-            if (data.isNotEmpty) {
-              final messageModel = MessageModel.fromJson(data);
-              onMessage(messageModel);
-            }
-          } catch (e) {
-            if (onError != null) onError(e);
-          }
-        },
-        onError: (error) {
-          if (onError != null) onError(error);
-        },
-        onDone: () {
-          _channel = null;
-          _currentPatientId = null;
-        },
-        cancelOnError: false,
-      );
+      if (content != null && content.isNotEmpty) {
+        request.fields['content'] = content;
+      }
 
-      if (onConnected != null) onConnected();
+      if (image != null) {
+        final fileStream = image.openRead();
+        final fileLength = await image.length();
+        final multipartFile = http.MultipartFile(
+          'image',
+          fileStream,
+          fileLength,
+          filename: image.path.split('/').last,
+          contentType: MediaType('image', 'jpeg'),
+        );
+        request.files.add(multipartFile);
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = json.decode(response.body);
+        return MessageModel.fromJson(data);
+      } else {
+        throw ApiException('فشل إرسال الرسالة: ${response.statusCode}');
+      }
     } catch (e) {
-      if (onError != null) onError(e);
-      throw ApiException('فشل الاتصال: ${e.toString()}');
-    }
-  }
-
-  // إرسال رسالة عبر WebSocket
-  void sendMessage(String content) {
-    if (_channel == null) {
-      throw ApiException('غير متصل بـ WebSocket');
-    }
-
-    try {
-      final message = {
-        'message': content,
-      };
-      _channel!.sink.add(message.toString().replaceAll("'", '"'));
-    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
       throw ApiException('فشل إرسال الرسالة: ${e.toString()}');
     }
   }
 
-  // قطع الاتصال
-  void disconnect() {
-    if (_channel != null) {
-      _channel!.sink.close();
-      _channel = null;
-      _currentPatientId = null;
+  // تعليم رسالة كمقروءة
+  Future<void> markAsRead({
+    required String patientId,
+    required String messageId,
+  }) async {
+    try {
+      await _api.put(
+        ApiConstants.chatMarkRead(patientId, messageId),
+      );
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل تعليم الرسالة كمقروءة: ${e.toString()}');
     }
   }
 
-  // Parse JSON string helper
-  Map<String, dynamic> _parseJsonString(String jsonString) {
-    try {
-      // Use dart:convert for proper JSON parsing
-      return json.decode(jsonString) as Map<String, dynamic>;
-    } catch (e) {
-      return {};
-    }
+  // الحصول على SocketService
+  SocketService get socketService => _socketService;
+
+  // قطع الاتصال
+  void disconnect() {
+    _socketService.disconnect();
   }
 
   // التحقق من حالة الاتصال
-  bool get isConnected => _channel != null;
+  bool get isConnected => _socketService.isConnected;
 }
 

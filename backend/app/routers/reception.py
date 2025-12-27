@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body, HTTPException
 from typing import List, Optional
 from datetime import datetime
 
 from beanie.operators import In
 
-from app.schemas import PatientOut, PatientCreate, AppointmentOut, ReceptionAppointmentOut
+from app.schemas import DoctorOut, PatientOut, PatientCreate, AppointmentOut, ReceptionAppointmentOut
 from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.models import Patient, User
@@ -36,19 +36,71 @@ async def list_patients(
             age=u.age if u else None,
             city=u.city if u else None,
             treatment_type=p.treatment_type,
-            primary_doctor_id=str(p.primary_doctor_id) if p.primary_doctor_id else None,
-            secondary_doctor_id=str(p.secondary_doctor_id) if p.secondary_doctor_id else None,
+            doctor_ids=[str(did) for did in p.doctor_ids],
             qr_code_data=p.qr_code_data,
             qr_image_path=p.qr_image_path,
         ))
     return out
 
+@router.get("/doctors", response_model=List[DoctorOut])
+async def list_doctors():
+    """جلب قائمة جميع الأطباء المتاحين."""
+    from app.models import Doctor
+    doctors = await Doctor.find({}).to_list()
+    out: List[DoctorOut] = []
+    user_ids = list({d.user_id for d in doctors if d.user_id})
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+    
+    for d in doctors:
+        u = user_map.get(d.user_id)
+        # Get imageUrl from user if available (assuming it might be added later)
+        image_url = getattr(u, 'imageUrl', None) if u else None
+        out.append(DoctorOut(
+            id=str(d.id),
+            user_id=str(d.user_id),
+            name=u.name if u else None,
+            phone=u.phone if u else "",
+            imageUrl=image_url,
+        ))
+    return out
+
+@router.get("/patients/{patient_id}/doctors", response_model=List[DoctorOut])
+async def get_patient_doctors(patient_id: str):
+    """جلب قائمة الأطباء المرتبطين بمريض."""
+    from app.models import Doctor
+    patient = await Patient.get(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    if not patient.doctor_ids:
+        return []
+    
+    doctors = await Doctor.find(In(Doctor.id, patient.doctor_ids)).to_list()
+    user_ids = list({d.user_id for d in doctors if d.user_id})
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+    
+    out: List[DoctorOut] = []
+    for d in doctors:
+        u = user_map.get(d.user_id)
+        # Get imageUrl from user if available (assuming it might be added later)
+        image_url = getattr(u, 'imageUrl', None) if u else None
+        out.append(DoctorOut(
+            id=str(d.id),
+            user_id=str(d.user_id),
+            name=u.name if u else None,
+            phone=u.phone if u else "",
+            imageUrl=image_url,
+        ))
+    return out
+
 @router.post("/assign")
-async def assign_patient(patient_id: str, primary_doctor_id: str | None = None, secondary_doctor_id: str | None = None, current=Depends(require_roles([Role.RECEPTIONIST, Role.ADMIN]))):
-    """تحويل/تعيين مريض إلى طبيب (أساسي/ثانوي)."""
+async def assign_patient(patient_id: str = Query(...), doctor_ids: List[str] = Body(default=[]), current=Depends(require_roles([Role.RECEPTIONIST, Role.ADMIN]))):
+    """تحويل/تعيين مريض إلى قائمة من الأطباء."""
     from app.services.patient_service import assign_patient_doctors
-    p = await assign_patient_doctors(patient_id=patient_id, primary_doctor_id=primary_doctor_id, secondary_doctor_id=secondary_doctor_id, assigned_by_user_id=str(current.id))
-    return {"ok": True, "patient_id": str(p.id), "primary_doctor_id": str(p.primary_doctor_id) if p.primary_doctor_id else None, "secondary_doctor_id": str(p.secondary_doctor_id) if p.secondary_doctor_id else None}
+    p = await assign_patient_doctors(patient_id=patient_id, doctor_ids=doctor_ids, assigned_by_user_id=str(current.id))
+    return {"ok": True, "patient_id": str(p.id), "doctor_ids": [str(did) for did in p.doctor_ids]}
 
 @router.post("/patients", response_model=PatientOut)
 async def create_patient_reception(payload: PatientCreate):
@@ -65,8 +117,7 @@ async def create_patient_reception(payload: PatientCreate):
         age=u.age if u else None,
         city=u.city if u else None,
         treatment_type=p.treatment_type,
-        primary_doctor_id=str(p.primary_doctor_id) if p.primary_doctor_id else None,
-        secondary_doctor_id=str(p.secondary_doctor_id) if p.secondary_doctor_id else None,
+        doctor_ids=[str(did) for did in p.doctor_ids],
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
     )

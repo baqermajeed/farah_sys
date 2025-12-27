@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../core/network/api_constants.dart';
 
@@ -36,6 +38,11 @@ class AuthService {
     }
   }
 
+  // Public method to get current token (for saving before patient registration)
+  Future<String?> getToken() async {
+    return await _getToken();
+  }
+
   // Helper to save token
   Future<void> _saveToken(String token) async {
     try {
@@ -43,6 +50,11 @@ class AuthService {
     } catch (e) {
       print('⚠️ Warning: Could not save token to storage: $e');
     }
+  }
+
+  // Public method to save token (for restoring doctor/receptionist token)
+  Future<void> saveToken(String token) async {
+    await _saveToken(token);
   }
 
   // Helper to clear token
@@ -125,14 +137,10 @@ class AuthService {
     }
   }
 
-  // التحقق من OTP وتسجيل الدخول
+  // التحقق من OTP فقط (بدون إنشاء حساب)
   Future<Map<String, dynamic>> verifyOtp({
     required String phone,
     required String code,
-    String? name,
-    String? gender,
-    int? age,
-    String? city,
   }) async {
     try {
       print('🔐 ========== API VERIFY OTP ==========');
@@ -140,19 +148,11 @@ class AuthService {
       print('🔐 URL: $uri');
       print('🔐 Phone: $phone');
       print('🔐 Code: $code');
-      print('🔐 Name: $name');
-      print('🔐 Gender: $gender');
-      print('🔐 Age: $age');
-      print('🔐 City: $city');
       print('🔐 ===================================');
 
       final payload = {
         'phone': phone,
         'code': code,
-        if (name != null) 'name': name,
-        if (gender != null) 'gender': gender,
-        if (age != null) 'age': age,
-        if (city != null) 'city': city,
       };
 
       final response = await http
@@ -174,12 +174,20 @@ class AuthService {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         print('✅ VERIFY OTP SUCCESS');
-        final token = decoded['access_token'] as String?;
-        if (token != null) {
+        final accountExists = decoded['account_exists'] as bool? ?? false;
+        final token = decoded['token'] as String?;
+        
+        if (accountExists && token != null) {
           await _saveToken(token);
           print('✅ Token saved successfully');
         }
-        return {'ok': true, 'data': decoded};
+        
+        return {
+          'ok': true,
+          'data': decoded,
+          'accountExists': accountExists,
+          'token': token,
+        };
       }
 
       print('❌ VERIFY OTP FAILED: ${decoded['detail'] ?? 'Unknown error'}');
@@ -190,6 +198,78 @@ class AuthService {
       };
     } catch (e) {
       print('❌ VERIFY OTP ERROR: $e');
+      return {
+        'ok': false,
+        'error': e.toString().contains('timeout')
+            ? 'انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت'
+            : 'حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى',
+        'data': {'error': e.toString()},
+      };
+    }
+  }
+
+  // إنشاء حساب مريض جديد
+  Future<Map<String, dynamic>> createPatientAccount({
+    required String phone,
+    required String name,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    try {
+      print('🔐 ========== API CREATE PATIENT ACCOUNT ==========');
+      final uri = Uri.parse(_getFullUrl(ApiConstants.authCreatePatientAccount));
+      print('🔐 URL: $uri');
+      print('🔐 Phone: $phone');
+      print('🔐 Name: $name');
+      print('🔐 Gender: $gender');
+      print('🔐 Age: $age');
+      print('🔐 City: $city');
+      print('🔐 ================================================');
+
+      final payload = {
+        'phone': phone,
+        'name': name,
+        if (gender != null) 'gender': gender,
+        if (age != null) 'age': age,
+        if (city != null) 'city': city,
+      };
+
+      final response = await http
+          .post(uri, headers: await _getHeaders(), body: jsonEncode(payload))
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              print('❌ CREATE PATIENT ACCOUNT TIMEOUT');
+              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
+            },
+          );
+
+      print('🔐 ========== API CREATE PATIENT ACCOUNT RESPONSE ==========');
+      print('🔐 Status Code: ${response.statusCode}');
+      print('🔐 Response Body: ${response.body}');
+      print('🔐 =========================================================');
+
+      final decoded = _decodeBody(response.bodyBytes);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        print('✅ CREATE PATIENT ACCOUNT SUCCESS');
+        final token = decoded['access_token'] as String?;
+        if (token != null) {
+          await _saveToken(token);
+          print('✅ Token saved successfully');
+        }
+        return {'ok': true, 'data': decoded};
+      }
+
+      print('❌ CREATE PATIENT ACCOUNT FAILED: ${decoded['detail'] ?? 'Unknown error'}');
+      return {
+        'ok': false,
+        'error': decoded['detail'] ?? 'فشل إنشاء الحساب',
+        'data': decoded,
+      };
+    } catch (e) {
+      print('❌ CREATE PATIENT ACCOUNT ERROR: $e');
       return {
         'ok': false,
         'error': e.toString().contains('timeout')
@@ -336,6 +416,120 @@ class AuthService {
   Future<bool> isLoggedIn() async {
     final token = await _getToken();
     return token != null && token.isNotEmpty;
+  }
+
+  // تحديث معلومات المستخدم
+  Future<void> updateProfile({
+    required String name,
+    required String phone,
+  }) async {
+    try {
+      print('👤 ========== API UPDATE PROFILE ==========');
+      final uri = Uri.parse(_getFullUrl(ApiConstants.authUpdateProfile));
+      print('👤 URL: $uri');
+      print('👤 Name: $name');
+      print('👤 Phone: $phone');
+      print('👤 =======================================');
+
+      final payload = {
+        'name': name,
+        'phone': phone,
+      };
+
+      final response = await http
+          .put(
+            uri,
+            headers: await _getHeaders(includeAuth: true),
+            body: jsonEncode(payload),
+          )
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              print('❌ UPDATE PROFILE TIMEOUT');
+              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
+            },
+          );
+
+      print('👤 ========== API UPDATE PROFILE RESPONSE ==========');
+      print('👤 Status Code: ${response.statusCode}');
+      print('👤 Response Body: ${response.body}');
+      print('👤 ================================================');
+
+      final decoded = _decodeBody(response.bodyBytes);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        print('✅ UPDATE PROFILE SUCCESS');
+        return;
+      }
+
+      print(
+        '❌ UPDATE PROFILE FAILED: ${decoded['detail'] ?? 'Unknown error'}',
+      );
+      throw Exception(decoded['detail'] ?? 'فشل تحديث المعلومات');
+    } catch (e) {
+      print('❌ UPDATE PROFILE ERROR: $e');
+      if (e.toString().contains('timeout')) {
+        throw Exception('انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت');
+      }
+      rethrow;
+    }
+  }
+
+  // رفع صورة الملف الشخصي
+  Future<void> uploadProfileImage(File imageFile) async {
+    try {
+      print('📷 ========== API UPLOAD PROFILE IMAGE ==========');
+      final uri = Uri.parse(_getFullUrl(ApiConstants.authUploadImage));
+      print('📷 URL: $uri');
+      print('📷 Image path: ${imageFile.path}');
+      print('📷 ==============================================');
+
+      final request = http.MultipartRequest('POST', uri);
+      request.headers.addAll(await _getHeaders(includeAuth: true));
+      
+      // إضافة الصورة
+      final fileStream = http.ByteStream(imageFile.openRead());
+      final fileLength = await imageFile.length();
+      final multipartFile = http.MultipartFile(
+        'image',
+        fileStream,
+        fileLength,
+        filename: imageFile.path.split('/').last,
+        contentType: MediaType('image', 'jpeg'),
+      );
+      request.files.add(multipartFile);
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('❌ UPLOAD IMAGE TIMEOUT');
+          throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
+        },
+      );
+
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('📷 ========== API UPLOAD IMAGE RESPONSE ==========');
+      print('📷 Status Code: ${response.statusCode}');
+      print('📷 Response Body: ${response.body}');
+      print('📷 ==============================================');
+
+      final decoded = _decodeBody(response.bodyBytes);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        print('✅ UPLOAD IMAGE SUCCESS');
+        return;
+      }
+
+      print('❌ UPLOAD IMAGE FAILED: ${decoded['detail'] ?? 'Unknown error'}');
+      throw Exception(decoded['detail'] ?? 'فشل رفع الصورة');
+    } catch (e) {
+      print('❌ UPLOAD IMAGE ERROR: $e');
+      if (e.toString().contains('timeout')) {
+        throw Exception('انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت');
+      }
+      rethrow;
+    }
   }
 
   // تسجيل الخروج

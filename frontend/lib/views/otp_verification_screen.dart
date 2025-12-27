@@ -8,20 +8,10 @@ import 'package:farah_sys_final/controllers/auth_controller.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String phoneNumber;
-  final String? name;
-  final String? gender;
-  final int? age;
-  final String? city;
-  final bool isRegistration;
 
   const OtpVerificationScreen({
     super.key,
     required this.phoneNumber,
-    this.name,
-    this.gender,
-    this.age,
-    this.city,
-    this.isRegistration = false,
   });
 
   @override
@@ -84,11 +74,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       _authController.verifyOtpAndLogin(
         phoneNumber: widget.phoneNumber,
         code: otp,
-        name: widget.name,
-        gender: widget.gender,
-        age: widget.age,
-        city: widget.city,
-        returnToReception: widget.isRegistration,
       );
     }
   }

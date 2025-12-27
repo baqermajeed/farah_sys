@@ -8,7 +8,6 @@ import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/gender_selector.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
-import 'package:farah_sys_final/models/patient_model.dart';
 
 class EditPatientProfileScreen extends StatefulWidget {
   const EditPatientProfileScreen({super.key});
@@ -246,56 +245,63 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
                       ? null
                       : () async {
                           if (_nameController.text.isEmpty) {
-                            Get.snackbar(
-                              'خطأ',
-                              'يرجى إدخال الاسم',
-                              snackPosition: SnackPosition.TOP,
+                            _showResultDialog(
+                              context,
+                              isSuccess: false,
+                              message: 'يرجى إدخال الاسم',
                             );
                             return;
                           }
 
-                          // TODO: Update via API
-                          // تحويل الجنس من 'ذكر'/'أنثى' إلى 'male'/'female'
-                          String? genderValue;
-                          if (selectedGender == AppStrings.male) {
-                            genderValue = 'male';
-                          } else if (selectedGender == AppStrings.female) {
-                            genderValue = 'female';
-                          } else {
-                            genderValue = selectedGender;
-                          }
+                          try {
+                            // تحويل الجنس من 'ذكر'/'أنثى' إلى 'male'/'female'
+                            String? genderValue;
+                            if (selectedGender == AppStrings.male) {
+                              genderValue = 'male';
+                            } else if (selectedGender == AppStrings.female) {
+                              genderValue = 'female';
+                            } else {
+                              genderValue = selectedGender;
+                            }
 
-                          // تحديث البيانات محلياً (سيتم استبدالها بالـ API لاحقاً)
-                          final user = _authController.currentUser.value;
-                          if (user != null) {
-                            _authController.currentUser.value = user.copyWith(
+                            // تحديث البيانات عبر API
+                            await _patientController.updateMyProfile(
                               name: _nameController.text,
-                              age: int.tryParse(_ageController.text),
                               gender: genderValue,
+                              age: int.tryParse(_ageController.text),
                               city: selectedCity,
                             );
-                          }
 
-                          // تحديث ملف المريض أيضاً
-                          final profile = _patientController.myProfile.value;
-                          if (profile != null) {
-                            _patientController.myProfile.value = PatientModel(
-                              id: profile.id,
-                              name: _nameController.text,
-                              phoneNumber: profile.phoneNumber,
-                              gender: genderValue ?? profile.gender,
-                              age:
-                                  int.tryParse(_ageController.text) ??
-                                  profile.age,
-                              city: selectedCity ?? profile.city,
-                              imageUrl: profile.imageUrl,
-                              doctorId: profile.doctorId,
-                              treatmentHistory: profile.treatmentHistory,
+                            // العودة إلى الصفحة السابقة أولاً
+                            Get.back();
+
+                            // إظهار dialog النجاح بعد العودة
+                            Future.delayed(
+                              const Duration(milliseconds: 300),
+                              () {
+                                _showResultDialog(
+                                  Get.context!,
+                                  isSuccess: true,
+                                  message: 'تم حفظ التغييرات بنجاح',
+                                );
+                              },
+                            );
+                          } catch (e) {
+                            // العودة إلى الصفحة السابقة أولاً
+                            Get.back();
+
+                            // إظهار dialog الفشل بعد العودة
+                            Future.delayed(
+                              const Duration(milliseconds: 300),
+                              () {
+                                _showResultDialog(
+                                  Get.context!,
+                                  isSuccess: false,
+                                  message: 'فشل حفظ التغييرات: ${e.toString()}',
+                                );
+                              },
                             );
                           }
-
-                          Get.snackbar('نجح', 'تم حفظ التغييرات');
-                          Get.back();
                         },
                   width: double.infinity,
                   isLoading: _patientController.isLoading.value,
@@ -306,6 +312,61 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showResultDialog(
+    BuildContext context, {
+    required bool isSuccess,
+    required String message,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                isSuccess ? Icons.check_circle : Icons.error,
+                color: isSuccess ? Colors.green : Colors.red,
+                size: 28.sp,
+              ),
+              SizedBox(width: 12.w),
+              Text(
+                isSuccess ? 'نجح' : 'فشل',
+                style: TextStyle(
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.bold,
+                  color: isSuccess ? Colors.green : Colors.red,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
+            style: TextStyle(fontSize: 16.sp, color: AppColors.textPrimary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'حسناً',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -3,7 +3,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
+import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/widgets/custom_button.dart';
+import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 
 class ReceptionProfileScreen extends StatelessWidget {
@@ -22,21 +24,8 @@ class ReceptionProfileScreen extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
                 child: Row(
                   children: [
-                    GestureDetector(
-                      onTap: () => Get.back(),
-                      child: Container(
-                        padding: EdgeInsets.all(12.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12.r),
-                        ),
-                        child: Icon(
-                          Icons.arrow_back,
-                          color: AppColors.primary,
-                          size: 24.sp,
-                        ),
-                      ),
-                    ),
+                    // Empty space on the right to balance the back button
+                    SizedBox(width: 40.w),
                     Expanded(
                       child: Center(
                         child: Text(
@@ -49,40 +38,17 @@ class ReceptionProfileScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // Back button on the left (in RTL)
+                    const BackButtonWidget(),
                   ],
                 ),
               ),
               SizedBox(height: 24.h),
               // Profile Image
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 60.r,
-                    backgroundColor: AppColors.primaryLight,
-                    child: Icon(
-                      Icons.person,
-                      size: 60.sp,
-                      color: AppColors.white,
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: EdgeInsets.all(8.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.white, width: 2),
-                      ),
-                      child: Icon(
-                        Icons.camera_alt,
-                        color: AppColors.white,
-                        size: 20.sp,
-                      ),
-                    ),
-                  ),
-                ],
+              CircleAvatar(
+                radius: 60.r,
+                backgroundColor: AppColors.primaryLight,
+                child: Icon(Icons.person, size: 60.sp, color: AppColors.white),
               ),
               SizedBox(height: 32.h),
               Obx(() {
@@ -91,7 +57,7 @@ class ReceptionProfileScreen extends StatelessWidget {
                 return Padding(
                   padding: EdgeInsets.symmetric(horizontal: 24.w),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         AppStrings.name,
@@ -100,6 +66,7 @@ class ReceptionProfileScreen extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                           color: AppColors.textPrimary,
                         ),
+                        textAlign: TextAlign.right,
                       ),
                       SizedBox(height: 8.h),
                       Container(
@@ -136,6 +103,7 @@ class ReceptionProfileScreen extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                           color: AppColors.textPrimary,
                         ),
+                        textAlign: TextAlign.right,
                       ),
                       SizedBox(height: 8.h),
                       Container(
@@ -172,6 +140,7 @@ class ReceptionProfileScreen extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                           color: AppColors.textPrimary,
                         ),
+                        textAlign: TextAlign.right,
                       ),
                       SizedBox(height: 8.h),
                       Container(
@@ -208,6 +177,7 @@ class ReceptionProfileScreen extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                           color: AppColors.textPrimary,
                         ),
+                        textAlign: TextAlign.right,
                       ),
                       SizedBox(height: 8.h),
                       Container(
@@ -240,12 +210,7 @@ class ReceptionProfileScreen extends StatelessWidget {
                       CustomButton(
                         text: 'تعديل الملف الشخصي',
                         onPressed: () {
-                          // Navigate to edit profile
-                          Get.snackbar(
-                            'قريباً',
-                            'ميزة تعديل الملف الشخصي قريباً',
-                            snackPosition: SnackPosition.TOP,
-                          );
+                          Get.toNamed(AppRoutes.editReceptionProfile);
                         },
                         backgroundColor: AppColors.primary,
                         width: double.infinity,

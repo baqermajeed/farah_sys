@@ -24,7 +24,7 @@ class PatientModelAdapter extends TypeAdapter<PatientModel> {
       age: fields[4] as int,
       city: fields[5] as String,
       imageUrl: fields[6] as String?,
-      doctorId: fields[7] as String?,
+      doctorIds: (fields[7] as List).cast<String>(),
       treatmentHistory: (fields[8] as List?)?.cast<String>(),
     );
   }
@@ -48,7 +48,7 @@ class PatientModelAdapter extends TypeAdapter<PatientModel> {
       ..writeByte(6)
       ..write(obj.imageUrl)
       ..writeByte(7)
-      ..write(obj.doctorId)
+      ..write(obj.doctorIds)
       ..writeByte(8)
       ..write(obj.treatmentHistory);
   }

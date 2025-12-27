@@ -2,6 +2,7 @@ import 'package:farah_sys_final/services/api_service.dart';
 import 'package:farah_sys_final/core/network/api_constants.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
+import 'package:farah_sys_final/models/doctor_model.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/models/medical_record_model.dart';
 
@@ -27,6 +28,68 @@ class PatientService {
     }
   }
 
+  // تحديث ملف المريض الشخصي
+  Future<PatientModel> updateMyProfile({
+    String? name,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    try {
+      final Map<String, dynamic> data = {};
+      if (name != null) data['name'] = name;
+      if (gender != null) data['gender'] = gender;
+      if (age != null) data['age'] = age;
+      if (city != null) data['city'] = city;
+
+      final response = await _api.put(ApiConstants.patientUpdateMe, data: data);
+
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(response.data);
+      } else {
+        throw ApiException('فشل تحديث الملف الشخصي');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل تحديث الملف الشخصي: ${e.toString()}');
+    }
+  }
+
+  // إنشاء مريض جديد (للاستقبال)
+  Future<PatientModel> createPatientForReception({
+    required String name,
+    required String phoneNumber,
+    required String gender,
+    required int age,
+    required String city,
+  }) async {
+    try {
+      final response = await _api.post(
+        ApiConstants.receptionCreatePatient,
+        data: {
+          'name': name,
+          'phone': phoneNumber,
+          'gender': gender,
+          'age': age,
+          'city': city,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(response.data);
+      } else {
+        throw ApiException('فشل إضافة المريض');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل إضافة المريض: ${e.toString()}');
+    }
+  }
+
   // جلب جميع المرضى (للاستقبال)
   Future<List<PatientModel>> getAllPatients({
     int skip = 0,
@@ -35,10 +98,7 @@ class PatientService {
     try {
       final response = await _api.get(
         ApiConstants.receptionPatients,
-        queryParameters: {
-          'skip': skip,
-          'limit': limit,
-        },
+        queryParameters: {'skip': skip, 'limit': limit},
       );
 
       if (response.statusCode == 200) {
@@ -55,13 +115,83 @@ class PatientService {
     }
   }
 
+  // جلب قائمة جميع الأطباء (للاستقبال)
+  Future<List<DoctorModel>> getAllDoctors() async {
+    try {
+      final response = await _api.get(ApiConstants.receptionDoctors);
+
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        return data.map((json) => DoctorModel.fromJson(json)).toList();
+      } else {
+        throw ApiException('فشل جلب قائمة الأطباء');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب قائمة الأطباء: ${e.toString()}');
+    }
+  }
+
+  // جلب الأطباء المرتبطين بمريض
+  Future<List<DoctorModel>> getPatientDoctors(String patientId) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.receptionPatientDoctors(patientId),
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        return data.map((json) => DoctorModel.fromJson(json)).toList();
+      } else {
+        throw ApiException('فشل جلب أطباء المريض');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب أطباء المريض: ${e.toString()}');
+    }
+  }
+
+  // ربط المريض بقائمة من الأطباء
+  Future<bool> assignPatientToDoctors(
+    String patientId,
+    List<String> doctorIds,
+  ) async {
+    try {
+      final response = await _api.post(
+        '${ApiConstants.receptionAssignPatient}?patient_id=$patientId',
+        data: doctorIds,
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        throw ApiException('فشل ربط المريض بالأطباء');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل ربط المريض بالأطباء: ${e.toString()}');
+    }
+  }
+
   // جلب مواعيد المريض
   Future<Map<String, List<AppointmentModel>>> getMyAppointments() async {
     try {
+      print('📅 [PatientService] getMyAppointments called');
+      print(
+        '📅 [PatientService] Endpoint: ${ApiConstants.patientAppointments}',
+      );
       final response = await _api.get(ApiConstants.patientAppointments);
+      print('📅 [PatientService] Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = response.data;
+        print('📅 [PatientService] Response data: $data');
         final primary = (data['primary'] as List? ?? [])
             .map((json) => AppointmentModel.fromJson(json))
             .toList();
@@ -69,14 +199,19 @@ class PatientService {
             .map((json) => AppointmentModel.fromJson(json))
             .toList();
 
-        return {
-          'primary': primary,
-          'secondary': secondary,
-        };
+        print(
+          '📅 [PatientService] Parsed ${primary.length} primary and ${secondary.length} secondary appointments',
+        );
+        return {'primary': primary, 'secondary': secondary};
       } else {
+        print(
+          '❌ [PatientService] Unexpected status code: ${response.statusCode}',
+        );
         throw ApiException('فشل جلب المواعيد');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [PatientService] Error in getMyAppointments: $e');
+      print('❌ [PatientService] Stack trace: $stackTrace');
       if (e is ApiException) {
         rethrow;
       }
@@ -91,9 +226,7 @@ class PatientService {
 
       if (response.statusCode == 200) {
         final data = response.data as List;
-        return data
-            .map((json) => MedicalRecordModel.fromJson(json))
-            .toList();
+        return data.map((json) => MedicalRecordModel.fromJson(json)).toList();
       } else {
         throw ApiException('فشل جلب السجلات');
       }
@@ -124,8 +257,47 @@ class PatientService {
     }
   }
 
+  // جلب معلومات الطبيب المرتبط بالمريض
+  Future<Map<String, dynamic>> getMyDoctor() async {
+    try {
+      final response = await _api.get(ApiConstants.patientDoctor);
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        return {
+          'id': data['id'] ?? '',
+          'name': data['name'] ?? '',
+          'phone': data['phone'] ?? '',
+        };
+      } else {
+        throw ApiException('فشل جلب معلومات الطبيب');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب معلومات الطبيب: ${e.toString()}');
+    }
+  }
+
   // تحويل PatientOut من Backend إلى PatientModel
   PatientModel _mapPatientOutToModel(Map<String, dynamic> json) {
+    // Support both old format (primary_doctor_id, secondary_doctor_id) and new format (doctor_ids)
+    List<String> doctorIds = [];
+    if (json['doctor_ids'] != null) {
+      doctorIds = List<String>.from(json['doctor_ids']);
+    } else if (json['doctorIds'] != null) {
+      doctorIds = List<String>.from(json['doctorIds']);
+    } else {
+      // Backward compatibility: convert old format to new format
+      if (json['primary_doctor_id'] != null) {
+        doctorIds.add(json['primary_doctor_id']);
+      }
+      if (json['secondary_doctor_id'] != null) {
+        doctorIds.add(json['secondary_doctor_id']);
+      }
+    }
+
     return PatientModel(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
@@ -134,11 +306,10 @@ class PatientService {
       age: json['age'] ?? 0,
       city: json['city'] ?? '',
       imageUrl: json['qr_image_path'],
-      doctorId: json['primary_doctor_id']?.toString(),
+      doctorIds: doctorIds,
       treatmentHistory: json['treatment_type'] != null
           ? [json['treatment_type']]
           : null,
     );
   }
 }
-

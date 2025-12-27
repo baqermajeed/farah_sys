@@ -74,18 +74,3 @@ async def create_patient(
     await ensure_patient_qr(patient)
     return patient
 
-async def assign_patient_to_doctors(
-    *,
-    patient_id: Optional[str],
-    primary_doctor_id: Optional[str],
-    secondary_doctor_id: Optional[str],
-    assigned_by_user_id: Optional[str] = None,
-) -> Patient:
-    """Admin or Receptionist: wrapper to assign doctors using patient service semantics."""
-    from app.services.patient_service import assign_patient_doctors
-    return await assign_patient_doctors(
-        patient_id=patient_id,
-        primary_doctor_id=primary_doctor_id,
-        secondary_doctor_id=secondary_doctor_id,
-        assigned_by_user_id=assigned_by_user_id,
-    )

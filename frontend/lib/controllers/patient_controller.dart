@@ -13,6 +13,7 @@ class PatientController extends GetxController {
   final RxBool isLoading = false.obs;
   final Rx<PatientModel?> selectedPatient = Rx<PatientModel?>(null);
   final Rx<PatientModel?> myProfile = Rx<PatientModel?>(null);
+  final Rx<Map<String, dynamic>?> myDoctor = Rx<Map<String, dynamic>?>(null);
 
   // جلب قائمة المرضى (للطبيب أو موظف الاستقبال)
   Future<void> loadPatients({int skip = 0, int limit = 50}) async {
@@ -131,5 +132,74 @@ class PatientController extends GetxController {
 
   void selectPatient(PatientModel? patient) {
     selectedPatient.value = patient;
+  }
+
+  // التحقق من وجود طبيب مرتبط بالمريض
+  Future<bool> checkDoctorAssignment() async {
+    try {
+      final profile = await _patientService.getMyProfile();
+      myProfile.value = profile;
+      // التحقق من وجود primary_doctor_id
+      return profile.doctorIds.isNotEmpty;
+    } catch (e) {
+      print('❌ [PatientController] Error checking doctor assignment: $e');
+      return false;
+    }
+  }
+
+  // جلب معلومات الطبيب المرتبط بالمريض
+  Future<void> updateMyProfile({
+    String? name,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    try {
+      isLoading.value = true;
+      final updatedProfile = await _patientService.updateMyProfile(
+        name: name,
+        gender: gender,
+        age: age,
+        city: city,
+      );
+      myProfile.value = updatedProfile;
+      
+      // تحديث بيانات المستخدم أيضاً
+      final authController = Get.find<AuthController>();
+      final user = authController.currentUser.value;
+      if (user != null) {
+        authController.currentUser.value = user.copyWith(
+          name: updatedProfile.name,
+          age: updatedProfile.age,
+          gender: updatedProfile.gender,
+          city: updatedProfile.city,
+        );
+      }
+      
+      // إعادة تحميل الملف الشخصي لضمان التحديث
+      await loadMyProfile();
+    } catch (e) {
+      print('❌ [PatientController] Error updating profile: $e');
+      rethrow;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  Future<void> loadMyDoctor() async {
+    try {
+      isLoading.value = true;
+      final doctorInfo = await _patientService.getMyDoctor();
+      myDoctor.value = doctorInfo;
+    } on ApiException catch (e) {
+      print('❌ [PatientController] Error loading doctor: ${e.message}');
+      // لا نعرض snackbar لأنه قد لا يكون هناك طبيب مرتبط
+      myDoctor.value = null;
+    } catch (e) {
+      print('❌ [PatientController] Error loading doctor: $e');
+      myDoctor.value = null;
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

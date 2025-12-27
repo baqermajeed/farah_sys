@@ -26,7 +26,7 @@ class PatientModel {
   final String? imageUrl;
 
   @HiveField(7)
-  final String? doctorId;
+  final List<String> doctorIds;
 
   @HiveField(8)
   final List<String>? treatmentHistory;
@@ -39,7 +39,7 @@ class PatientModel {
     required this.age,
     required this.city,
     this.imageUrl,
-    this.doctorId,
+    this.doctorIds = const [],
     this.treatmentHistory,
   });
 
@@ -52,7 +52,11 @@ class PatientModel {
       age: json['age'] ?? 0,
       city: json['city'] ?? '',
       imageUrl: json['imageUrl'],
-      doctorId: json['doctorId'],
+      doctorIds: json['doctor_ids'] != null
+          ? List<String>.from(json['doctor_ids'])
+          : (json['doctorIds'] != null
+              ? List<String>.from(json['doctorIds'])
+              : const []),
       treatmentHistory: json['treatmentHistory'] != null
           ? List<String>.from(json['treatmentHistory'])
           : null,
@@ -68,7 +72,7 @@ class PatientModel {
       'age': age,
       'city': city,
       'imageUrl': imageUrl,
-      'doctorId': doctorId,
+      'doctorIds': doctorIds,
       'treatmentHistory': treatmentHistory,
     };
   }

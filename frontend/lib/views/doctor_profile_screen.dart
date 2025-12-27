@@ -1,18 +1,233 @@
+import 'dart:io';
+import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_button.dart';
+import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/core/utils/image_utils.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
-class DoctorProfileScreen extends StatelessWidget {
+class DoctorProfileScreen extends StatefulWidget {
   const DoctorProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final authController = Get.find<AuthController>();
+  State<DoctorProfileScreen> createState() => _DoctorProfileScreenState();
+}
 
+class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
+  final AuthController _authController = Get.find<AuthController>();
+  final AuthService _authService = AuthService();
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _isUploadingImage = false;
+  int _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
+
+  Future<void> _pickAndUploadImage() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+
+      if (image == null) return;
+
+      setState(() {
+        _isUploadingImage = true;
+      });
+
+      final imageFile = File(image.path);
+      await _authService.uploadProfileImage(imageFile);
+
+      // تحديث معلومات المستخدم
+      await _authController.checkLoggedInUser();
+
+      // إجبار تحديث الواجهة مع timestamp جديد لإعادة تحميل الصورة
+      if (mounted) {
+        setState(() {
+          _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
+        });
+
+        Get.snackbar(
+          'نجح',
+          'تم تحديث الصورة بنجاح',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.green,
+          colorText: AppColors.white,
+          duration: const Duration(seconds: 2),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Get.snackbar(
+          'خطأ',
+          'فشل تحديث الصورة: ${e.toString()}',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.red,
+          colorText: AppColors.white,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploadingImage = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildProfileImage() {
+    final user = _authController.currentUser.value;
+    final imageUrl = user?.imageUrl;
+    final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+
+    if (validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)) {
+      // إضافة timestamp لإجبار إعادة التحميل عند التحديث
+      final imageUrlWithTimestamp = '$validImageUrl?t=$_imageTimestamp';
+
+      return Stack(
+        children: [
+          CircleAvatar(
+            radius: 60.r,
+            backgroundColor: AppColors.primaryLight,
+            child: ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: imageUrlWithTimestamp,
+                fit: BoxFit.contain,
+                width: 120.w,
+                height: 120.w,
+                fadeInDuration: Duration.zero,
+                fadeOutDuration: Duration.zero,
+                placeholder: (context, url) =>
+                    Container(color: AppColors.primaryLight),
+                errorWidget: (context, url, error) =>
+                    Icon(Icons.person, size: 60.sp, color: AppColors.white),
+                memCacheWidth: 240,
+                memCacheHeight: 240,
+              ),
+            ),
+          ),
+          if (!_isUploadingImage)
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: GestureDetector(
+                onTap: _pickAndUploadImage,
+                child: Container(
+                  padding: EdgeInsets.all(8.w),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.white, width: 2),
+                  ),
+                  child: Icon(
+                    Icons.camera_alt,
+                    color: AppColors.white,
+                    size: 20.sp,
+                  ),
+                ),
+              ),
+            ),
+          if (_isUploadingImage)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(
+                        color: AppColors.white,
+                        strokeWidth: 3,
+                      ),
+                      SizedBox(height: 8.h),
+                      Text(
+                        'جاري التحميل...',
+                        style: TextStyle(
+                          color: AppColors.white,
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return Stack(
+      children: [
+        CircleAvatar(
+          radius: 60.r,
+          backgroundColor: AppColors.primaryLight,
+          child: Icon(Icons.person, size: 60.sp, color: AppColors.white),
+        ),
+        if (!_isUploadingImage)
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: GestureDetector(
+              onTap: _pickAndUploadImage,
+              child: Container(
+                padding: EdgeInsets.all(8.w),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.white, width: 2),
+                ),
+                child: Icon(
+                  Icons.camera_alt,
+                  color: AppColors.white,
+                  size: 20.sp,
+                ),
+              ),
+            ),
+          ),
+        if (_isUploadingImage)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      color: AppColors.white,
+                      strokeWidth: 3,
+                    ),
+                    SizedBox(height: 8.h),
+                    Text(
+                      'جاري التحميل...',
+                      style: TextStyle(
+                        color: AppColors.white,
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -22,21 +237,8 @@ class DoctorProfileScreen extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
                 child: Row(
                   children: [
-                    GestureDetector(
-                      onTap: () => Get.back(),
-                      child: Container(
-                        padding: EdgeInsets.all(12.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12.r),
-                        ),
-                        child: Icon(
-                          Icons.arrow_back,
-                          color: AppColors.primary,
-                          size: 24.sp,
-                        ),
-                      ),
-                    ),
+                    // Empty space on the right to balance the back button
+                    SizedBox(width: 40.w),
                     Expanded(
                       child: Center(
                         child: Text(
@@ -49,81 +251,22 @@ class DoctorProfileScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        // Settings
-                        Get.snackbar(
-                          'قريباً',
-                          'صفحة الإعدادات قريباً',
-                          snackPosition: SnackPosition.TOP,
-                        );
-                      },
-                      child: Container(
-                        padding: EdgeInsets.all(12.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12.r),
-                        ),
-                        child: Icon(
-                          Icons.settings,
-                          color: AppColors.primary,
-                          size: 24.sp,
-                        ),
-                      ),
-                    ),
+                    // Back button on the left (in RTL)
+                    const BackButtonWidget(),
                   ],
                 ),
               ),
               SizedBox(height: 24.h),
               // Profile Image
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 60.r,
-                    backgroundColor: AppColors.primaryLight,
-                    child: Icon(
-                      Icons.person,
-                      size: 60.sp,
-                      color: AppColors.white,
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: GestureDetector(
-                      onTap: () {
-                        // Change profile picture
-                        Get.snackbar(
-                          'قريباً',
-                          'ميزة تغيير الصورة قريباً',
-                          snackPosition: SnackPosition.TOP,
-                        );
-                      },
-                      child: Container(
-                        padding: EdgeInsets.all(8.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.white, width: 2),
-                        ),
-                        child: Icon(
-                          Icons.camera_alt,
-                          color: AppColors.white,
-                          size: 20.sp,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              Obx(() => _buildProfileImage()),
               SizedBox(height: 32.h),
               Obx(() {
-                final user = authController.currentUser.value;
+                final user = _authController.currentUser.value;
 
                 return Padding(
                   padding: EdgeInsets.symmetric(horizontal: 24.w),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         AppStrings.name,
@@ -308,11 +451,7 @@ class DoctorProfileScreen extends StatelessWidget {
                       CustomButton(
                         text: 'تعديل الملف الشخصي',
                         onPressed: () {
-                          Get.snackbar(
-                            'قريباً',
-                            'ميزة تعديل الملف الشخصي قريباً',
-                            snackPosition: SnackPosition.TOP,
-                          );
+                          Get.toNamed(AppRoutes.editDoctorProfile);
                         },
                         backgroundColor: AppColors.primary,
                         width: double.infinity,
@@ -324,9 +463,23 @@ class DoctorProfileScreen extends StatelessWidget {
                       ),
                       SizedBox(height: 16.h),
                       CustomButton(
+                        text: 'أوقات العمل',
+                        onPressed: () {
+                          Get.toNamed(AppRoutes.workingHours);
+                        },
+                        backgroundColor: AppColors.primary.withOpacity(0.8),
+                        width: double.infinity,
+                        icon: Icon(
+                          Icons.access_time,
+                          color: AppColors.white,
+                          size: 20.sp,
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                      CustomButton(
                         text: AppStrings.logout,
                         onPressed: () async {
-                          await authController.logout();
+                          await _authController.logout();
                         },
                         backgroundColor: AppColors.error,
                         width: double.infinity,
@@ -348,4 +501,3 @@ class DoctorProfileScreen extends StatelessWidget {
     );
   }
 }
-

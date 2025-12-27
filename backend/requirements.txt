@@ -16,3 +16,4 @@ pymongo<4.9.0
 slowapi==0.1.9
 SQLAlchemy==2.0.36
 boto3==1.42.4
+python-socketio==5.11.0

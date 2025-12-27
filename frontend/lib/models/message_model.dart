@@ -22,6 +22,9 @@ class MessageModel {
   @HiveField(5)
   final bool isRead;
 
+  @HiveField(6)
+  final String? imageUrl;
+
   MessageModel({
     required this.id,
     required this.senderId,
@@ -29,6 +32,7 @@ class MessageModel {
     required this.message,
     required this.timestamp,
     this.isRead = false,
+    this.imageUrl,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -44,7 +48,8 @@ class MessageModel {
       receiverId: json['receiverId'] ?? '',
       message: json['content'] ?? json['message'] ?? '',
       timestamp: dateTime,
-      isRead: json['isRead'] ?? false,
+      isRead: json['is_read'] ?? json['isRead'] ?? false,
+      imageUrl: json['imageUrl'] ?? json['image_url'],
     );
   }
 
@@ -56,6 +61,7 @@ class MessageModel {
       'message': message,
       'timestamp': timestamp.toIso8601String(),
       'isRead': isRead,
+      'imageUrl': imageUrl,
     };
   }
 }

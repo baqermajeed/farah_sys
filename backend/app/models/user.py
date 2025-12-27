@@ -19,6 +19,7 @@ class User(Document):
     gender: str | None = None  # "male" | "female"
     age: int | None = None
     city: str | None = None
+    imageUrl: str | None = None  # رابط صورة الملف الشخصي
 
     # بيانات خاصة بتسجيل الدخول للطاقم (اختيارية للمرضى)
     username: Indexed(str, unique=True) | None = None

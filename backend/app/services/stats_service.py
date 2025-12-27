@@ -187,9 +187,10 @@ async def get_doctors_stats() -> Dict:
     
     for doctor in doctors:
         user = await User.get(doctor.user_id)
-        primary_patients = await Patient.find(Patient.primary_doctor_id == doctor.id).count()
-        secondary_patients = await Patient.find(Patient.secondary_doctor_id == doctor.id).count()
-        total_patients = primary_patients + secondary_patients
+        # Count patients where this doctor is in their doctor_ids list
+        from beanie.operators import In
+        patients = await Patient.find(In(Patient.doctor_ids, [doctor.id])).to_list()
+        total_patients = len(patients)
         
         appointments = await Appointment.find(Appointment.doctor_id == doctor.id).count()
         completed = await Appointment.find(
@@ -204,8 +205,8 @@ async def get_doctors_stats() -> Dict:
             "user_id": str(doctor.user_id),
             "name": user.name if user else None,
             "phone": user.phone if user else None,
-            "primary_patients": primary_patients,
-            "secondary_patients": secondary_patients,
+            "primary_patients": total_patients,  # For backward compatibility
+            "secondary_patients": 0,  # No longer used
             "total_patients": total_patients,
             "total_appointments": appointments,
             "completed_appointments": completed,

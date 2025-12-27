@@ -41,7 +41,7 @@ async def get_patient_by_id(patient_id: str) -> Tuple[Patient, User]:
     return patient, user
 
 async def list_doctor_patients(doctor_id: str, skip: int = 0, limit: Optional[int] = None) -> List[Patient]:
-    """All patients assigned to this doctor (primary or secondary)."""
+    """All patients assigned to this doctor (via doctor_ids list)."""
     skip, limit = _normalize_pagination(skip, limit)
     try:
         did = OID(doctor_id)
@@ -50,26 +50,8 @@ async def list_doctor_patients(doctor_id: str, skip: int = 0, limit: Optional[in
         raise HTTPException(status_code=400, detail=f"Invalid doctor_id format: {doctor_id}")
 
     try:
-        # Beanie v1.x لا يدعم استخدام عامل OR "|" مباشرة بين تعابير المقارنة بهذه الطريقة،
-        # لذلك نجلب المرضى الأساسيين والثانويين في استعلامين منفصلين ثم ندمج النتائج.
-        primary_patients = await Patient.find(Patient.primary_doctor_id == did).to_list()
-        secondary_patients = await Patient.find(Patient.secondary_doctor_id == did).to_list()
-
-        # دمج القوائم مع إزالة التكرار (في حال كان الطبيب أساسيًا وثانويًا لنفس المريض)
-        patients_map: dict[OID, Patient] = {p.id: p for p in primary_patients}
-        for p in secondary_patients:
-            patients_map.setdefault(p.id, p)
-
-        patients = list(patients_map.values())
-
-        # تطبيق التقطيع (skip / limit) بعد الدمج
-        if skip:
-            patients = patients[skip:]
-        if limit is not None:
-            patients = patients[:limit]
-
-        # لا نحتاج _attach_users هنا لأننا نجلب User مباشرة في router
-        # await _attach_users(patients)
+        # Use In operator to find all patients where doctor_id is in doctor_ids list
+        patients = await Patient.find(In(Patient.doctor_ids, [did])).skip(skip).limit(limit or MAX_PAGE_SIZE).to_list()
         return patients
     except Exception as e:
         print(f"❌ Error in list_doctor_patients: {e}")
@@ -78,11 +60,11 @@ async def list_doctor_patients(doctor_id: str, skip: int = 0, limit: Optional[in
         raise HTTPException(status_code=500, detail=f"Error fetching patients: {str(e)}")
 
 async def update_patient_by_doctor(*, doctor_id: str, patient_id: str, data: PatientUpdate) -> Patient:
-    """يسمح للطبيب بتعديل بيانات المريض إن كان من مرضاه (أساسي/ثانوي)."""
+    """يسمح للطبيب بتعديل بيانات المريض إن كان من مرضاه (في doctor_ids)."""
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
-    if OID(doctor_id) not in [patient.primary_doctor_id, patient.secondary_doctor_id]:
+    if OID(doctor_id) not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
     u = await User.get(patient.user_id)
     if data.name is not None:
@@ -129,7 +111,7 @@ async def delete_patient(*, actor_role: Role, patient_id: str, actor_doctor_id: 
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     if actor_role == Role.DOCTOR:
-        if OID(actor_doctor_id) not in [patient.primary_doctor_id, patient.secondary_doctor_id]:
+        if actor_doctor_id and OID(actor_doctor_id) not in patient.doctor_ids:
             raise HTTPException(status_code=403, detail="Not your patient")
     user = await User.get(patient.user_id)
     if user:
@@ -139,48 +121,65 @@ async def delete_patient(*, actor_role: Role, patient_id: str, actor_doctor_id: 
 async def assign_patient_doctors(
     *,
     patient_id: str,
-    primary_doctor_id: Optional[str],
-    secondary_doctor_id: Optional[str],
+    doctor_ids: List[str],
     assigned_by_user_id: Optional[str] = None,
 ) -> Patient:
-    """Receptionist/Admin can assign 0..2 doctors for a patient and نسجل التحويلات."""
+    """Receptionist/Admin can assign multiple doctors for a patient and نسجل التحويلات."""
     from app.models import AssignmentLog
+
+    print(f"🔗 [assign_patient_doctors] patient_id: {patient_id}, doctor_ids: {doctor_ids}")
 
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    # Validate doctors exist
-    if primary_doctor_id and (await Doctor.get(OID(primary_doctor_id))) is None:
-        raise HTTPException(status_code=404, detail="Primary doctor not found")
-    if secondary_doctor_id and (await Doctor.get(OID(secondary_doctor_id))) is None:
-        raise HTTPException(status_code=404, detail="Secondary doctor not found")
+    # Validate all doctors exist
+    doctor_oids = []
+    for doctor_id in doctor_ids:
+        doctor = await Doctor.get(OID(doctor_id))
+        if doctor is None:
+            print(f"❌ [assign_patient_doctors] Doctor {doctor_id} not found")
+            raise HTTPException(status_code=404, detail=f"Doctor {doctor_id} not found")
+        doctor_oids.append(OID(doctor_id))
+        print(f"✅ [assign_patient_doctors] Doctor {doctor_id} found")
 
-    prev_primary = patient.primary_doctor_id
-    prev_secondary = patient.secondary_doctor_id
+    prev_doctor_ids = set(patient.doctor_ids)
+    new_doctor_ids = set(doctor_oids)
 
-    patient.primary_doctor_id = OID(primary_doctor_id) if primary_doctor_id else None
-    patient.secondary_doctor_id = OID(secondary_doctor_id) if secondary_doctor_id else None
+    print(f"📋 [assign_patient_doctors] Previous doctor_ids: {prev_doctor_ids}")
+    print(f"📋 [assign_patient_doctors] Setting doctor_ids to: {new_doctor_ids}")
+
+    # Update doctor_ids
+    patient.doctor_ids = doctor_oids
+
+    print(f"💾 [assign_patient_doctors] patient.doctor_ids set to: {patient.doctor_ids}")
 
     # سجل التحويلات عند التغيير
-    if patient.primary_doctor_id != prev_primary and patient.primary_doctor_id is not None:
+    # للأطباء الجدد (المضافين)
+    added_doctors = new_doctor_ids - prev_doctor_ids
+    for doctor_id in added_doctors:
+        print(f"📝 [assign_patient_doctors] Creating AssignmentLog for newly added doctor {doctor_id}")
         await AssignmentLog(
             patient_id=patient.id,
-            doctor_id=patient.primary_doctor_id,
-            previous_doctor_id=prev_primary,
+            doctor_id=doctor_id,
+            previous_doctor_id=None,
             assigned_by_user_id=OID(assigned_by_user_id) if assigned_by_user_id else None,
-            kind="primary",
+            kind="assigned",
         ).insert()
-    if patient.secondary_doctor_id != prev_secondary and patient.secondary_doctor_id is not None:
-        await AssignmentLog(
-            patient_id=patient.id,
-            doctor_id=patient.secondary_doctor_id,
-            previous_doctor_id=prev_secondary,
-            assigned_by_user_id=OID(assigned_by_user_id) if assigned_by_user_id else None,
-            kind="secondary",
-        ).insert()
+    
+    # للأطباء المزالين (لم نعد نستخدم هذا حالياً، لكن يمكن إضافته لاحقاً)
+    removed_doctors = prev_doctor_ids - new_doctor_ids
+    for doctor_id in removed_doctors:
+        print(f"📝 [assign_patient_doctors] Doctor {doctor_id} was removed (not logging removal)")
 
+    print(f"💾 [assign_patient_doctors] Saving patient...")
     await patient.save()
+    print(f"✅ [assign_patient_doctors] Patient saved. doctor_ids: {patient.doctor_ids}")
+    
+    # التحقق من الحفظ
+    saved_patient = await Patient.get(patient.id)
+    print(f"🔍 [assign_patient_doctors] Verification - saved patient doctor_ids: {saved_patient.doctor_ids}")
+    
     return patient
 
 async def set_treatment_type(*, patient_id: str, doctor_id: str, treatment_type: str) -> Patient:
@@ -188,24 +187,88 @@ async def set_treatment_type(*, patient_id: str, doctor_id: str, treatment_type:
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
-    if OID(doctor_id) not in [patient.primary_doctor_id, patient.secondary_doctor_id]:
+    if OID(doctor_id) not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
     patient.treatment_type = treatment_type
     await patient.save()
     return patient
 
 async def create_note(
-    *, patient_id: str, doctor_id: str, note: Optional[str], image_path: Optional[str]
+    *, patient_id: str, doctor_id: str, note: Optional[str], image_path: Optional[str] = None, image_paths: Optional[List[str]] = None
 ) -> TreatmentNote:
-    """Add a new treatment note (section 1) with optional image; date auto."""
+    """Add a new treatment note (section 1) with optional images; date auto."""
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
-    if OID(doctor_id) not in [patient.primary_doctor_id, patient.secondary_doctor_id]:
+    if OID(doctor_id) not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
-    tn = TreatmentNote(patient_id=patient.id, doctor_id=OID(doctor_id), note=note, image_path=image_path)
+    
+    # للتوافق مع البيانات القديمة، نستخدم أول صورة كـ image_path
+    final_image_path = image_path
+    final_image_paths = image_paths or []
+    if final_image_paths and not final_image_path:
+        final_image_path = final_image_paths[0]
+    
+    tn = TreatmentNote(
+        patient_id=patient.id,
+        doctor_id=OID(doctor_id),
+        note=note,
+        image_path=final_image_path,
+        image_paths=final_image_paths
+    )
     await tn.insert()
     return tn
+
+async def update_note(
+    *, patient_id: str, note_id: str, doctor_id: str, note: Optional[str] = None, image_paths: Optional[List[str]] = None
+) -> TreatmentNote:
+    """Update an existing treatment note."""
+    patient = await Patient.get(OID(patient_id))
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    if OID(doctor_id) not in patient.doctor_ids:
+        raise HTTPException(status_code=403, detail="Not your patient")
+    
+    tn = await TreatmentNote.get(OID(note_id))
+    if not tn:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if str(tn.patient_id) != patient_id:
+        raise HTTPException(status_code=403, detail="Note does not belong to this patient")
+    if str(tn.doctor_id) != doctor_id:
+        raise HTTPException(status_code=403, detail="Not your note")
+    
+    if note is not None:
+        tn.note = note
+    if image_paths is not None:
+        # إذا كانت القائمة فارغة، نحتفظ بالصور القديمة
+        if len(image_paths) > 0:
+            tn.image_paths = image_paths
+            # للتوافق مع البيانات القديمة
+            tn.image_path = image_paths[0] if image_paths else None
+    
+    await tn.save()
+    return tn
+
+async def delete_note(
+    *, patient_id: str, note_id: str, doctor_id: str
+) -> bool:
+    """Delete a treatment note."""
+    patient = await Patient.get(OID(patient_id))
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    if OID(doctor_id) not in patient.doctor_ids:
+        raise HTTPException(status_code=403, detail="Not your patient")
+    
+    tn = await TreatmentNote.get(OID(note_id))
+    if not tn:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if str(tn.patient_id) != patient_id:
+        raise HTTPException(status_code=403, detail="Note does not belong to this patient")
+    if str(tn.doctor_id) != doctor_id:
+        raise HTTPException(status_code=403, detail="Not your note")
+    
+    await tn.delete()
+    return True
 
 async def create_gallery_image(
     *, patient_id: str, uploaded_by_user_id: str, image_path: str, note: Optional[str]
@@ -214,17 +277,47 @@ async def create_gallery_image(
     await gi.insert()
     return gi
 
+async def delete_gallery_image(*, gallery_image_id: str, patient_id: str) -> bool:
+    """حذف صورة من المعرض. يتحقق من أن الصورة تخص المريض المحدد."""
+    try:
+        gi = await GalleryImage.get(OID(gallery_image_id))
+        if not gi:
+            raise HTTPException(status_code=404, detail="Gallery image not found")
+        
+        # Verify it belongs to the patient
+        if str(gi.patient_id) != patient_id:
+            raise HTTPException(status_code=403, detail="Gallery image does not belong to this patient")
+        
+        await gi.delete()
+        return True
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Failed to delete gallery image: {str(e)}")
+
 async def create_appointment(
-    *, patient_id: str, doctor_id: str, scheduled_at: datetime, note: Optional[str], image_path: Optional[str]
+    *, patient_id: str, doctor_id: str, scheduled_at: datetime, note: Optional[str], image_path: Optional[str] = None, image_paths: Optional[List[str]] = None
 ) -> Appointment:
     # Validate ownership
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
-    if OID(doctor_id) not in [patient.primary_doctor_id, patient.secondary_doctor_id]:
+    if OID(doctor_id) not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
 
-    ap = Appointment(patient_id=patient.id, doctor_id=OID(doctor_id), scheduled_at=scheduled_at, note=note, image_path=image_path)
+    # للتوافق مع البيانات القديمة: إذا كانت image_paths موجودة، استخدمها، وإلا استخدم image_path
+    final_image_paths = image_paths if image_paths is not None else ([image_path] if image_path else [])
+    # للتوافق مع البيانات القديمة، احتفظ بأول صورة في image_path
+    final_image_path = final_image_paths[0] if final_image_paths else None
+
+    ap = Appointment(
+        patient_id=patient.id,
+        doctor_id=OID(doctor_id),
+        scheduled_at=scheduled_at,
+        note=note,
+        image_path=final_image_path,
+        image_paths=final_image_paths,
+    )
     await ap.insert()
 
     # Notify patient about new appointment (push notification)
@@ -312,18 +405,69 @@ async def list_appointments_for_all(
         query = query.limit(limit)
     return await query.to_list()
 
+async def delete_appointment(*, appointment_id: str, patient_id: str) -> bool:
+    """حذف موعد للمريض."""
+    try:
+        appointment = await Appointment.get(OID(appointment_id))
+        if not appointment:
+            return False
+        # التحقق من أن الموعد يخص المريض المحدد
+        if str(appointment.patient_id) != patient_id:
+            return False
+        await appointment.delete()
+        return True
+    except Exception as e:
+        print(f"Error deleting appointment {appointment_id}: {e}")
+        return False
+
+async def update_appointment_status(
+    *, appointment_id: str, patient_id: str, doctor_id: str, status: str
+) -> Appointment | None:
+    """تحديث حالة موعد."""
+    try:
+        appointment = await Appointment.get(OID(appointment_id))
+        if not appointment:
+            return None
+        # التحقق من أن الموعد يخص المريض والطبيب المحددين
+        if str(appointment.patient_id) != patient_id:
+            return None
+        if str(appointment.doctor_id) != doctor_id:
+            return None
+        # التحقق من أن الطبيب في قائمة أطباء المريض
+        patient = await Patient.get(OID(patient_id))
+        if patient and OID(doctor_id) not in patient.doctor_ids:
+            return None
+        # تحديث الحالة
+        appointment.status = status.lower()
+        await appointment.save()
+        return appointment
+    except Exception as e:
+        print(f"Error updating appointment status {appointment_id}: {e}")
+        return None
+
 async def list_patient_appointments_grouped(*, patient_id: str) -> tuple[List[Appointment], List[Appointment]]:
+    """Group appointments by doctor. Returns (appointments_for_first_doctor, all_other_appointments)."""
     p = await Patient.get(OID(patient_id))
     if not p:
         return [], []
     apps = await Appointment.find(Appointment.patient_id == p.id).sort("scheduled_at").to_list()
-    primary, secondary = [], []
+    if not p.doctor_ids:
+        return [], apps  # No doctors assigned, return all as "other"
+    
+    first_doctor_id = p.doctor_ids[0]
+    first_doctor_appointments = []
+    other_appointments = []
+    
     for a in apps:
-        if p.primary_doctor_id and a.doctor_id == p.primary_doctor_id:
-            primary.append(a)
-        elif p.secondary_doctor_id and a.doctor_id == p.secondary_doctor_id:
-            secondary.append(a)
-    return primary, secondary
+        if a.doctor_id == first_doctor_id:
+            first_doctor_appointments.append(a)
+        elif a.doctor_id in p.doctor_ids:
+            other_appointments.append(a)
+        else:
+            # Appointment with doctor not in patient's doctor_ids list
+            other_appointments.append(a)
+    
+    return first_doctor_appointments, other_appointments
 
 async def list_notes_for_patient(*, patient_id: str, skip: int = 0, limit: Optional[int] = None) -> List[TreatmentNote]:
     skip, limit = _normalize_pagination(skip, limit)

@@ -81,8 +81,26 @@ async def upload_clinic_image(
     file_name = f"{ts}{ext}"
     key = f"patients/{patient_id}/{folder}/{file_name}"
 
-    # DEV MODE: R2 موقَّف حاليًا – لا نرفع فعليًا، فقط نرجع رابطًا وهميًا
-    logger.warning("R2 upload disabled in dev; skipping upload for key %s", key)
-    return f"r2-disabled://{key}"
+    # DEV MODE: R2 موقَّف حاليًا – نحفظ الصور محلياً في مجلد media
+    import os
+    from pathlib import Path
+    
+    media_dir = Path("media")
+    local_file_path = media_dir / key
+    
+    # Create directory if it doesn't exist
+    local_file_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Save file locally
+    try:
+        with open(local_file_path, "wb") as f:
+            f.write(file_bytes)
+        logger.info(f"Saved file locally to: {local_file_path}")
+        # Return the same r2-disabled path (frontend will convert it to /media/...)
+        return f"r2-disabled://{key}"
+    except Exception as e:
+        logger.error(f"Failed to save file locally: {e}")
+        # Still return the path even if save failed
+        return f"r2-disabled://{key}"
 
 

@@ -1,11 +1,12 @@
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from pathlib import Path
 
 from app.config import get_settings
 from app.database import init_db, ping_db
@@ -27,12 +28,18 @@ from app.routers import qr as qr_router
 from app.routers import chat_ws as chat_ws_router
 from app.routers import chat as chat_router
 from app.routers import stats as stats_router
+from app.routers import doctor_working_hours as doctor_working_hours_router
+from app.services.socket_service import sio, get_socket_app
 
 # FastAPI مع Swagger UI الافتراضي
 app = FastAPI(
     title="Dental Clinic API",
     debug=settings.APP_DEBUG,
 )
+
+# Mount Socket.IO app
+socket_app = get_socket_app()
+app.mount("/socket.io", socket_app)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -107,6 +114,8 @@ app.include_router(chat_router.router)
 print("   ✅ Chat router registered")
 app.include_router(stats_router.router)
 print("   ✅ Stats router registered")
+app.include_router(doctor_working_hours_router.router)
+print("   ✅ Doctor Working Hours router registered")
 print("✅ [STARTUP] All routers registered successfully!")
 print(f"   📍 Auth endpoints available at: /auth/*")
 print(f"   🔗 Test endpoint: http://localhost:8000/auth/test")
@@ -216,6 +225,35 @@ async def readyz():
     if not await ping_db():
         raise HTTPException(status_code=503, detail="Database not ready")
     return {"status": "ok", "database": "up"}
+
+
+@app.get("/media/{file_path:path}")
+async def serve_media(file_path: str):
+    """
+    Serve media files. In dev mode with R2 disabled, tries to serve from local media directory.
+    If file doesn't exist, returns a placeholder image.
+    """
+    import os
+    from pathlib import Path
+    
+    # Try to find the file in local media directory
+    media_dir = Path("media")
+    file_path_obj = Path(file_path)
+    
+    # Security: prevent directory traversal
+    if ".." in file_path or file_path_obj.is_absolute():
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    
+    local_file_path = media_dir / file_path
+    
+    # If file exists locally, serve it
+    if local_file_path.exists() and local_file_path.is_file():
+        return FileResponse(str(local_file_path))
+    
+    # In dev mode with R2 disabled, return a placeholder
+    # You can create a placeholder image or return a simple response
+    logger.warning(f"Media file not found: {file_path} (R2 disabled in dev mode)")
+    raise HTTPException(status_code=404, detail="Media file not found (R2 disabled in dev mode)")
 
 
 @app.on_event("startup")

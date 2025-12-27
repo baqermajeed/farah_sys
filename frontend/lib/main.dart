@@ -1,3 +1,4 @@
+import 'package:farah_sys_final/views/working_hours_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -11,7 +12,10 @@ import 'package:farah_sys_final/views/patient_login_screen.dart';
 import 'package:farah_sys_final/views/doctor_login_screen.dart';
 import 'package:farah_sys_final/views/add_patient_screen.dart';
 import 'package:farah_sys_final/views/patient_home_screen.dart';
+import 'package:farah_sys_final/views/patient_welcome_screen.dart';
 import 'package:farah_sys_final/views/appointments_screen.dart';
+import 'package:farah_sys_final/views/appointments_by_date_screen.dart';
+import 'package:farah_sys_final/views/patient_appointments_screen.dart';
 import 'package:farah_sys_final/views/chat_screen.dart';
 import 'package:farah_sys_final/views/patient_profile_screen.dart';
 import 'package:farah_sys_final/views/edit_patient_profile_screen.dart';
@@ -22,13 +26,17 @@ import 'package:farah_sys_final/views/patient_details_screen.dart';
 import 'package:farah_sys_final/views/medical_records_screen.dart';
 import 'package:farah_sys_final/views/doctor_chats_screen.dart';
 import 'package:farah_sys_final/views/doctor_profile_screen.dart';
+import 'package:farah_sys_final/views/edit_doctor_profile_screen.dart';
 import 'package:farah_sys_final/views/notifications_screen.dart';
 import 'package:farah_sys_final/views/dental_implant_timeline_screen.dart';
 import 'package:farah_sys_final/views/reception_login_screen.dart';
 import 'package:farah_sys_final/views/reception_home_screen.dart';
 import 'package:farah_sys_final/views/reception_profile_screen.dart';
+import 'package:farah_sys_final/views/edit_reception_profile_screen.dart';
 import 'package:farah_sys_final/views/qr_scanner_screen.dart';
 import 'package:farah_sys_final/views/otp_verification_screen.dart';
+import 'package:farah_sys_final/views/patient_registration_screen.dart';
+import 'package:farah_sys_final/views/select_doctor_screen.dart';
 import 'package:farah_sys_final/models/user_model.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
@@ -38,9 +46,13 @@ import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/controllers/chat_controller.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Arabic locale for DateFormat
+  await initializeDateFormatting('ar', null);
 
   await Hive.initFlutter();
 
@@ -105,11 +117,15 @@ class MyApp extends StatelessWidget {
                 final args = Get.arguments as Map<String, dynamic>?;
                 return OtpVerificationScreen(
                   phoneNumber: args?['phoneNumber'] ?? '',
-                  name: args?['name'],
-                  gender: args?['gender'],
-                  age: args?['age'],
-                  city: args?['city'],
-                  isRegistration: args?['isRegistration'] ?? false,
+                );
+              },
+            ),
+            GetPage(
+              name: AppRoutes.patientRegistration,
+              page: () {
+                final args = Get.arguments as Map<String, dynamic>?;
+                return PatientRegistrationScreen(
+                  phoneNumber: args?['phoneNumber'] ?? '',
                 );
               },
             ),
@@ -120,6 +136,10 @@ class MyApp extends StatelessWidget {
             GetPage(
               name: AppRoutes.patientHome,
               page: () => const PatientHomeScreen(),
+            ),
+            GetPage(
+              name: AppRoutes.patientWelcome,
+              page: () => const PatientWelcomeScreen(),
             ),
             GetPage(
               name: AppRoutes.doctorHome,
@@ -136,6 +156,14 @@ class MyApp extends StatelessWidget {
             GetPage(
               name: AppRoutes.appointments,
               page: () => const AppointmentsScreen(),
+            ),
+            GetPage(
+              name: AppRoutes.patientAppointments,
+              page: () => const PatientAppointmentsScreen(),
+            ),
+            GetPage(
+              name: AppRoutes.appointmentsByDate,
+              page: () => const AppointmentsByDateScreen(),
             ),
             GetPage(name: AppRoutes.chat, page: () => const ChatScreen()),
             GetPage(
@@ -169,6 +197,14 @@ class MyApp extends StatelessWidget {
               page: () => const DoctorProfileScreen(),
             ),
             GetPage(
+              name: AppRoutes.editDoctorProfile,
+              page: () => const EditDoctorProfileScreen(),
+            ),
+            GetPage(
+              name: AppRoutes.workingHours,
+              page: () => WorkingHoursPage(),
+            ),
+            GetPage(
               name: AppRoutes.notifications,
               page: () => const NotificationsScreen(),
             ),
@@ -185,8 +221,26 @@ class MyApp extends StatelessWidget {
               page: () => const ReceptionHomeScreen(),
             ),
             GetPage(
+              name: AppRoutes.selectDoctor,
+              page: () {
+                final args = Get.arguments as Map<String, dynamic>?;
+                return SelectDoctorScreen(
+                  patientId: args?['patientId'] ?? '',
+                  currentDoctorIds:
+                      (args?['currentDoctorIds'] as List<dynamic>?)
+                          ?.map((e) => e.toString())
+                          .toList() ??
+                      [],
+                );
+              },
+            ),
+            GetPage(
               name: AppRoutes.receptionProfile,
               page: () => const ReceptionProfileScreen(),
+            ),
+            GetPage(
+              name: AppRoutes.editReceptionProfile,
+              page: () => const EditReceptionProfileScreen(),
             ),
             GetPage(
               name: AppRoutes.qrScanner,

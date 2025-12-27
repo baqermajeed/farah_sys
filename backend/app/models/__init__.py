@@ -9,4 +9,4 @@ from .chat import ChatRoom, ChatMessage
 from .notification import DeviceToken, Notification
 from .otp import OTPRequest
 from .assignment import AssignmentLog
-from .assignment import AssignmentLog
+from .doctor_working_hours import DoctorWorkingHours

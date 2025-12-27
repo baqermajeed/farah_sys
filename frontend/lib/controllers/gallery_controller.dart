@@ -55,6 +55,29 @@ class GalleryController extends GetxController {
     }
   }
 
+  // حذف صورة من المعرض
+  Future<bool> deleteImage(String patientId, String imageId) async {
+    try {
+      isLoading.value = true;
+      errorMessage.value = '';
+      
+      final success = await _doctorService.deleteGalleryImage(patientId, imageId);
+      
+      if (success) {
+        // إزالة الصورة من القائمة
+        galleryImages.removeWhere((img) => img.id == imageId);
+      }
+      
+      return success;
+    } catch (e) {
+      errorMessage.value = e.toString();
+      print('❌ [GalleryController] Error deleting image: $e');
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // مسح القائمة
   void clearGallery() {
     galleryImages.clear();

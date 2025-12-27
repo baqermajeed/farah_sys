@@ -7,6 +7,8 @@ import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
+import 'package:farah_sys_final/services/chat_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class DoctorHomeScreen extends StatefulWidget {
   const DoctorHomeScreen({super.key});
@@ -18,6 +20,35 @@ class DoctorHomeScreen extends StatefulWidget {
 class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   final RxString _searchQuery = ''.obs;
+  final ChatService _chatService = ChatService();
+  final RxMap<String, int> _unreadCounts = <String, int>{}.obs;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUnreadCounts();
+  }
+
+  Future<void> _loadUnreadCounts() async {
+    try {
+      final chatList = await _chatService.getChatList();
+      final unreadMap = <String, int>{};
+      for (var chat in chatList) {
+        final patientId = chat['patient_id']?.toString();
+        final unreadCount = chat['unread_count'] as int? ?? 0;
+        if (patientId != null) {
+          unreadMap[patientId] = unreadCount;
+        }
+      }
+      _unreadCounts.value = unreadMap;
+    } catch (e) {
+      print('❌ Error loading unread counts: $e');
+    }
+  }
+
+  int get _totalUnreadCount {
+    return _unreadCounts.values.fold(0, (sum, count) => sum + count);
+  }
 
   @override
   void dispose() {
@@ -60,19 +91,41 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                     },
                     child: Obx(() {
                       final user = authController.currentUser.value;
+                      final imageUrl = user?.imageUrl;
+                      final validImageUrl = ImageUtils.convertToValidUrl(
+                        imageUrl,
+                      );
+
                       return CircleAvatar(
                         radius: 20.r,
                         backgroundColor: AppColors.primary,
-                        backgroundImage: user?.imageUrl != null
-                            ? NetworkImage(user!.imageUrl!)
-                            : null,
-                        child: user?.imageUrl == null
-                            ? Icon(
+                        child:
+                            (validImageUrl != null &&
+                                ImageUtils.isValidImageUrl(validImageUrl))
+                            ? ClipOval(
+                                child: CachedNetworkImage(
+                                  imageUrl: validImageUrl,
+                                  fit: BoxFit.contain,
+                                  width: 40.w,
+                                  height: 40.w,
+                                  fadeInDuration: Duration.zero,
+                                  fadeOutDuration: Duration.zero,
+                                  placeholder: (context, url) =>
+                                      Container(color: AppColors.primary),
+                                  errorWidget: (context, url, error) => Icon(
+                                    Icons.person,
+                                    color: AppColors.white,
+                                    size: 20.sp,
+                                  ),
+                                  memCacheWidth: 80,
+                                  memCacheHeight: 80,
+                                ),
+                              )
+                            : Icon(
                                 Icons.person,
                                 color: AppColors.white,
                                 size: 20.sp,
-                              )
-                            : null,
+                              ),
                       );
                     }),
                   ),
@@ -109,34 +162,40 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                       SizedBox(width: 12.w),
                       // Chat Icon with notification dot
                       GestureDetector(
-                        onTap: () {
-                          Get.toNamed(AppRoutes.doctorChats);
+                        onTap: () async {
+                          await Get.toNamed(AppRoutes.doctorChats);
+                          // Reload unread counts when returning from chats screen
+                          _loadUnreadCounts();
                         },
-                        child: Stack(
-                          children: [
-                            Padding(
-                              padding: EdgeInsets.all(8.w),
-                              child: Image.asset(
-                                'assets/images/message.png',
-                                width: 24.sp,
-                                height: 24.sp,
-                                // color: AppColors.primary,
-                              ),
-                            ),
-                            Positioned(
-                              left: 0,
-                              top: 0,
-                              child: Container(
-                                width: 10.w,
-                                height: 10.h,
-                                decoration: BoxDecoration(
-                                  color: AppColors.error,
-                                  shape: BoxShape.circle,
+                        child: Obx(() {
+                          final hasUnread = _totalUnreadCount > 0;
+                          return Stack(
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.all(8.w),
+                                child: Image.asset(
+                                  'assets/images/message.png',
+                                  width: 24.sp,
+                                  height: 24.sp,
+                                  // color: AppColors.primary,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                              if (hasUnread)
+                                Positioned(
+                                  left: 0,
+                                  top: 0,
+                                  child: Container(
+                                    width: 10.w,
+                                    height: 10.h,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.error,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        }),
                       ),
                     ],
                   ),
@@ -311,16 +370,28 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                     // All Patients Section
                     Padding(
                       padding: EdgeInsets.only(bottom: 16.h),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          'جميع المرضى',
-                          style: TextStyle(
-                            fontSize: 18.sp,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                          textAlign: TextAlign.right,
+                      child: GestureDetector(
+                        onTap: () {
+                          Get.toNamed(AppRoutes.doctorPatientsList);
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'جميع المرضى',
+                              style: TextStyle(
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            // Scroll arrow (optional) - على اليسار في RTL
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 16.sp,
+                              color: AppColors.textSecondary,
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -639,31 +710,45 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                     ),
                     SizedBox(width: 16.w),
                     // Chat Icon with notification dot (على اليسار في RTL - آخر عنصر)
-                    Stack(
-                      children: [
-                        Image.asset(
-                          'assets/images/message.png',
-                          width: 24.sp,
-                          height: 24.sp,
-                          //  color: AppColors.primary,
-                        ),
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            width: 10.w,
-                            height: 10.h,
-                            decoration: BoxDecoration(
-                              color: Colors.pink,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppColors.white,
-                                width: 1.5,
-                              ),
+                    GestureDetector(
+                      onTap: () async {
+                        await Get.toNamed(
+                          AppRoutes.chat,
+                          arguments: {'patientId': patient.id},
+                        );
+                        // Reload unread counts when returning from chat
+                        _loadUnreadCounts();
+                      },
+                      child: Obx(() {
+                        final unreadCount = _unreadCounts[patient.id] ?? 0;
+                        return Stack(
+                          children: [
+                            Image.asset(
+                              'assets/images/message.png',
+                              width: 24.sp,
+                              height: 24.sp,
+                              //  color: AppColors.primary,
                             ),
-                          ),
-                        ),
-                      ],
+                            if (unreadCount > 0)
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: Container(
+                                  width: 10.w,
+                                  height: 10.h,
+                                  decoration: BoxDecoration(
+                                    color: Colors.pink,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: AppColors.white,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      }),
                     ),
                   ],
                 ),

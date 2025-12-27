@@ -28,6 +28,7 @@ async def init_db() -> None:
         Notification,
         OTPRequest,
         AssignmentLog,
+        DoctorWorkingHours,
     )
     await init_beanie(
         database=_mongo_client[db_name],
@@ -44,6 +45,7 @@ async def init_db() -> None:
             Notification,
             OTPRequest,
             AssignmentLog,
+            DoctorWorkingHours,
         ],
     )
 

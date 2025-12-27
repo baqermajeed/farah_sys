@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Query, HTTPException, Form
 from beanie.operators import In
+from datetime import datetime, timezone
 
 from app.schemas import GalleryOut, GalleryCreate, PatientOut
 from app.security import require_roles, get_current_user
@@ -36,8 +37,7 @@ async def list_patients(
             age=u.age if u else None,
             city=u.city if u else None,
             treatment_type=p.treatment_type,
-            primary_doctor_id=str(p.primary_doctor_id) if p.primary_doctor_id else None,
-            secondary_doctor_id=str(p.secondary_doctor_id) if p.secondary_doctor_id else None,
+            doctor_ids=[str(did) for did in p.doctor_ids],
             qr_code_data=p.qr_code_data,
             qr_image_path=p.qr_image_path,
         ))
@@ -69,4 +69,10 @@ async def upload_patient_image(
         image_path=image_path,
         note=note,
     )
-    return GalleryOut.model_validate(gi)
+    return GalleryOut(
+        id=str(gi.id),
+        patient_id=str(gi.patient_id),
+        image_path=gi.image_path,
+        note=gi.note,
+        created_at=gi.created_at.isoformat() if gi.created_at else datetime.now(timezone.utc).isoformat(),
+    )

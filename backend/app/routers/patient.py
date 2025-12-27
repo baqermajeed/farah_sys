@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+import asyncio
 
-from app.schemas import PatientOut, PatientAppointmentsOut, AppointmentOut, NoteOut, GalleryOut
+from app.schemas import PatientOut, PatientAppointmentsOut, AppointmentOut, NoteOut, GalleryOut, DoctorOut, PatientUpdate
 from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.services import patient_service
-from app.models import Patient
+from app.models import Patient, Doctor, User
 from app.utils.qrcode_gen import ensure_patient_qr
+from beanie import PydanticObjectId as OID
 
 router = APIRouter(prefix="/patient", tags=["patient"], dependencies=[Depends(require_roles([Role.PATIENT]))])
 
@@ -27,10 +30,76 @@ async def my_profile(current=Depends(get_current_user)):
         age=u.age,
         city=u.city,
         treatment_type=p.treatment_type,
-        primary_doctor_id=str(p.primary_doctor_id) if p.primary_doctor_id else None,
-        secondary_doctor_id=str(p.secondary_doctor_id) if p.secondary_doctor_id else None,
+        doctor_ids=[str(did) for did in p.doctor_ids],
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
+    )
+
+@router.put("/me", response_model=PatientOut)
+async def update_my_profile(data: PatientUpdate, current=Depends(get_current_user)):
+    """تحديث بيانات حساب المريض."""
+    # fetch patient profile by linking from user
+    patient = await Patient.find_one(Patient.user_id == current.id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+    
+    # current is already the User object from get_current_user
+    u = current
+    
+    # Update user fields
+    if data.name is not None:
+        u.name = data.name
+    if data.gender is not None:
+        u.gender = data.gender
+    if data.age is not None:
+        u.age = data.age
+    if data.city is not None:
+        u.city = data.city
+    
+    await u.save()
+    
+    # Return updated patient
+    if patient and not patient.qr_code_data:
+        await ensure_patient_qr(patient)
+    
+    return PatientOut(
+        id=str(patient.id),
+        user_id=str(patient.user_id),
+        name=u.name,
+        phone=u.phone,
+        gender=u.gender,
+        age=u.age,
+        city=u.city,
+        treatment_type=patient.treatment_type,
+        doctor_ids=[str(did) for did in patient.doctor_ids],
+        qr_code_data=patient.qr_code_data,
+        qr_image_path=patient.qr_image_path,
+    )
+
+@router.get("/doctor", response_model=DoctorOut)
+async def my_doctor(current=Depends(get_current_user)):
+    """معلومات الطبيب المرتبط بالمريض (أول طبيب في القائمة)."""
+    patient = await Patient.find_one(Patient.user_id == current.id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+    
+    if not patient.doctor_ids:
+        raise HTTPException(status_code=404, detail="No doctor assigned")
+    
+    # Return the first doctor in the list
+    doctor = await Doctor.get(patient.doctor_ids[0])
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    
+    user = await User.get(doctor.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Doctor user not found")
+    
+    return DoctorOut(
+        id=str(doctor.id),
+        user_id=str(doctor.user_id),
+        name=user.name,
+        phone=user.phone,
     )
 
 @router.get("/appointments", response_model=PatientAppointmentsOut)
@@ -44,9 +113,51 @@ async def my_appointments(current=Depends(get_current_user)):
     primary, secondary = await patient_service.list_patient_appointments_grouped(
         patient_id=str(patient.id)
     )
+    
+    # تحويل المواعيد إلى AppointmentOut مع جلب patient_name و doctor_name
+    async def build_appointment_out(a):
+        # جلب بيانات المريض
+        patient_name = None
+        try:
+            apt_patient = await Patient.get(a.patient_id)
+            if apt_patient:
+                user = await User.get(apt_patient.user_id)
+                if user:
+                    patient_name = user.name
+        except Exception:
+            pass
+        
+        # جلب بيانات الطبيب
+        doctor_name = None
+        try:
+            doctor = await Doctor.get(a.doctor_id)
+            if doctor:
+                user = await User.get(doctor.user_id)
+                if user:
+                    doctor_name = user.name
+        except Exception:
+            pass
+        
+        return AppointmentOut(
+            id=str(a.id),
+            patient_id=str(a.patient_id),
+            patient_name=patient_name,
+            doctor_id=str(a.doctor_id),
+            doctor_name=doctor_name,
+            scheduled_at=a.scheduled_at.isoformat(),
+            note=a.note,
+            image_path=a.image_path,
+            image_paths=a.image_paths or [],
+            status=a.status,
+        )
+    
+    # استخدام asyncio.gather لتنفيذ جميع العمليات بشكل متوازي
+    primary_out = await asyncio.gather(*[build_appointment_out(a) for a in primary])
+    secondary_out = await asyncio.gather(*[build_appointment_out(a) for a in secondary])
+    
     return PatientAppointmentsOut(
-        primary=[AppointmentOut.model_validate(a) for a in primary],
-        secondary=[AppointmentOut.model_validate(a) for a in secondary],
+        primary=primary_out,
+        secondary=secondary_out,
     )
 
 @router.get("/notes", response_model=list[NoteOut])
@@ -71,4 +182,19 @@ async def my_gallery(current=Depends(get_current_user)):
     gallery = await patient_service.list_gallery_for_patient(
         patient_id=str(patient.id)
     )
-    return [GalleryOut.model_validate(g) for g in gallery]
+    result = []
+    for g in gallery:
+        try:
+            result.append(
+                GalleryOut(
+                    id=str(g.id),
+                    patient_id=str(g.patient_id),
+                    image_path=g.image_path,
+                    note=g.note,
+                    created_at=g.created_at.isoformat() if g.created_at else datetime.now(timezone.utc).isoformat(),
+                )
+            )
+        except Exception as e:
+            # Skip this image if there's an error
+            continue
+    return result
